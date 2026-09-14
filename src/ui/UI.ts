@@ -25,7 +25,7 @@ const HINTS: Record<ToolName, string> = {
   station: 'Click a free tile within 3 tiles of a town or industry. Right-click / Esc cancels.',
   demolish: 'Click a piece of track or a station to remove it (25% refund).',
   line: 'Click stations on the map to add them as stops. Esc when done.',
-  upgrade: 'Hover a track to see its segment (junction to junction); click to upgrade it to double track so trains can pass in both directions.',
+  upgrade: 'Hover a track to see its segment (junction to junction); click to add a second track so trains can pass in both directions. Click a double-track segment (red) to remove the second track again.',
 };
 
 /** Builds and wires the DOM HUD around the canvas. */

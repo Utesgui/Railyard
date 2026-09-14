@@ -25,7 +25,7 @@ export interface UIState {
   demolishEdge: { t: number; d: Dir } | null;
   demolishStation: number;
   /** upgrade tool: hovered segment */
-  upgradeHover: { t: number; d: Dir; edges: number[]; cost: number; count: number } | null;
+  upgradeHover: { t: number; d: Dir; edges: number[]; cost: number; count: number; refund: number } | null;
   /** line id currently receiving stops via the line tool, or -1 */
   editingLine: number;
   showCatchment: boolean;

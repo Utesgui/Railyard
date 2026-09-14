@@ -168,7 +168,7 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, cam: Camera, state: G
   // double-track upgrade preview: highlight the whole segment
   if (ui.tool === 'upgrade' && ui.upgradeHover) {
     const hv = ui.upgradeHover;
-    ctx.strokeStyle = hv.count > 0 ? 'rgba(79,176,255,0.9)' : 'rgba(255,255,255,0.5)';
+    ctx.strokeStyle = hv.count > 0 ? 'rgba(79,176,255,0.9)' : 'rgba(224,72,63,0.85)';
     ctx.lineWidth = 9;
     ctx.lineCap = 'round';
     ctx.beginPath();
@@ -181,7 +181,7 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, cam: Camera, state: G
     }
     ctx.stroke();
     const [hx, hy] = center(hv.t, w);
-    label(ctx, z, hv.count > 0 ? `Double track: ${fmtMoney(hv.cost)} (${hv.count} edges)` : 'Already double track', hx, hy - 18, hv.count > 0 ? '#fff' : '#ccc');
+    label(ctx, z, hv.count > 0 ? `Double track: ${fmtMoney(hv.cost)} (${hv.count} edges)` : `Remove second track: refund ${fmtMoney(hv.refund)}`, hx, hy - 18, hv.count > 0 ? '#fff' : '#ff9a94');
   }
 
   // selection highlights

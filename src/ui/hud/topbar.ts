@@ -45,10 +45,6 @@ export function createTopbar(game: Game, panels: PanelHost): Topbar {
     seenAlerts = game.state.notifications.length;
     refreshSpeed();
   });
-  panels.register('alerts', () => {
-    seenAlerts = game.state.notifications.length;
-    return { el: h('div', null, 'placeholder'), update() {} };
-  });
   return {
     el,
     update() {

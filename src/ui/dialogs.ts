@@ -115,3 +115,39 @@ export function showAchievements(game: Game): void {
   content.querySelectorAll('.item').forEach((el) => el.setAttribute('style', 'display:flex;gap:8px;align-items:center;padding:4px 6px;background:rgba(255,255,255,0.04);border-radius:4px'));
   showDialog(game, content);
 }
+
+/** In-app confirmation (window.confirm is blocked inside sandboxed frames). */
+export function confirmDialog(game: Game, title: string, text: string, onYes: () => void, yesLabel = 'OK', danger = false): void {
+  const yes = button(yesLabel, () => { closeDialog(); onYes(); }, danger ? 'btn danger' : 'btn primary');
+  const content = h('div', { className: 'dialog' }, h('h2', null, title), h('p', null, text), h('div', { className: 'row' }, button('Cancel', () => {}, 'btn'), yes));
+  content.querySelector('.row .btn')!.setAttribute('data-close', '1');
+  showDialog(game, content);
+  yes.focus();
+}
+
+/** In-app text prompt (window.prompt is blocked inside sandboxed frames). */
+export function promptDialog(game: Game, title: string, value: string, onOk: (value: string) => void): void {
+  const input = h('input', { type: 'text', value, placeholder: title });
+  input.id = 'prompt-input';
+  input.style.width = '100%';
+  input.style.background = '#14161b';
+  input.style.color = 'inherit';
+  input.style.border = '1px solid #3a3e48';
+  input.style.borderRadius = '4px';
+  input.style.padding = '6px 8px';
+  input.style.font = 'inherit';
+  const submit = () => {
+    const v = input.value.trim();
+    closeDialog();
+    if (v) onOk(v);
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submit();
+    e.stopPropagation();
+  });
+  const content = h('div', { className: 'dialog' }, h('h2', null, title), input, h('div', { className: 'row' }, button('Cancel', () => {}, 'btn'), button('OK', submit, 'btn primary')));
+  content.querySelector('.row .btn')!.setAttribute('data-close', '1');
+  showDialog(game, content);
+  input.focus();
+  input.select();
+}

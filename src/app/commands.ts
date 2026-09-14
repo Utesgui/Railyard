@@ -156,6 +156,36 @@ export class Commands {
     return { cost, count };
   }
 
+  /** Refund for removing the second track of a segment (only edges that are double). */
+  segmentDowngradeRefund(edges: number[]): { refund: number; count: number } {
+    const world = this.state.world;
+    let refund = 0;
+    let count = 0;
+    for (const e of edges) {
+      const et = e >> 2;
+      const ed = (e & 3) as Dir;
+      if (!isDouble(world, et, ed)) continue;
+      refund += Math.round(doubleUpgradeCost(world, et, ed) * B.demolishRefund);
+      count++;
+    }
+    return { refund, count };
+  }
+
+  /** Remove the second track from the segment containing t->d. Refuses while trains use the segment. */
+  downgradeSegment(t: number, d: Dir): CmdResult {
+    const s = this.state;
+    if (!hasEdge(s.world, t, d)) return fail('no track');
+    const edges = this.segmentEdges(t, d);
+    const { refund, count } = this.segmentDowngradeRefund(edges);
+    if (count === 0) return fail('not double track');
+    for (const e of edges) if (edgeBusy(this.rt, e)) return fail('a train is using this segment');
+    for (const e of edges) setDouble(s.world, e >> 2, (e & 3) as Dir, false);
+    spend(s, -refund, 'construction');
+    rebuildLocks(s, this.rt);
+    this.ev.emit('trackChanged');
+    return ok();
+  }
+
   /** Make every edge of the segment containing t->d double track. */
   upgradeSegment(t: number, d: Dir): CmdResult {
     const s = this.state;

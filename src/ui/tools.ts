@@ -181,8 +181,9 @@ export function createTools(game: Game, host: ToolHost): Record<ToolName, Tool> 
     onClick(tile) {
       const hv = ui.upgradeHover;
       if (!hv) return;
-      const res = game.cmd.upgradeSegment(hv.t, hv.d);
-      if (!res.ok) host.toast('warn', res.reason ?? 'cannot upgrade');
+      // segments that are already double get their second track removed again
+      const res = hv.count > 0 ? game.cmd.upgradeSegment(hv.t, hv.d) : game.cmd.downgradeSegment(hv.t, hv.d);
+      if (!res.ok) host.toast('warn', res.reason ?? 'cannot change track');
       ui.upgradeHover = null;
       this.onMove(tile, 0, 0);
     },
@@ -195,7 +196,8 @@ export function createTools(game: Game, host: ToolHost): Record<ToolName, Tool> 
       if (ui.upgradeHover && ui.upgradeHover.t === best.t && ui.upgradeHover.d === best.d) return;
       const edges = game.cmd.segmentEdges(best.t, best.d);
       const { cost, count } = game.cmd.segmentUpgradeCost(edges);
-      ui.upgradeHover = { t: best.t, d: best.d, edges, cost, count };
+      const { refund } = game.cmd.segmentDowngradeRefund(edges);
+      ui.upgradeHover = { t: best.t, d: best.d, edges, cost, count, refund };
     },
     onCancel() {
       game.setTool('inspect');

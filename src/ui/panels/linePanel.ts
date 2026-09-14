@@ -4,6 +4,7 @@ import { LINE_COLORS } from '../../render/palette';
 import { button, clear, h, kv, row } from '../dom';
 import { fmtMoney } from '../format';
 import { t } from '../../i18n/t';
+import { promptDialog } from '../dialogs';
 import { barChart } from '../chart';
 import { cargoIcon } from '../icons';
 import { CARGO_COUNT, CARGO } from '../../data/cargo';
@@ -84,10 +85,7 @@ export function registerLinePanels(host: PanelHost): void {
       null,
       host.header('', swatch, title),
       row(
-        button(t('rename'), () => {
-          const name = prompt('Line name', line.name);
-          if (name) game.cmd.renameLine(id, name);
-        }, 'btn small'),
+        button(t('rename'), () => promptDialog(game, 'Line name', line.name, (name) => game.cmd.renameLine(id, name)), 'btn small'),
         modeBtn,
         button(t('deleteLine'), () => {
           const r = game.cmd.deleteLine(id);

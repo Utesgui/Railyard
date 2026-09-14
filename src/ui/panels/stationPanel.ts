@@ -9,6 +9,7 @@ import { cargoIcon } from '../icons';
 import { dockedTrains } from '../../sim/train/geometry';
 import { stateText } from './linePanel';
 import { t } from '../../i18n/t';
+import { promptDialog } from '../dialogs';
 import type { PanelHost } from './PanelHost';
 
 export function registerStationPanel(host: PanelHost): void {
@@ -21,11 +22,7 @@ export function registerStationPanel(host: PanelHost): void {
       const r = game.cmd.upgradeStation(id);
       if (!r.ok) game.events.emit('notify', { day: 0, kind: 'warn', text: r.reason ?? 'cannot upgrade' });
     }, 'btn small');
-    const renameBtn = button(t('rename'), () => {
-      const name = prompt('Station name', st.name);
-      if (name) game.cmd.renameStation(id, name);
-      host.refresh();
-    }, 'btn small');
+    const renameBtn = button(t('rename'), () => promptDialog(game, 'Station name', st.name, (name) => { game.cmd.renameStation(id, name); host.refresh(); }), 'btn small');
     const demolishBtn = button(t('demolish'), () => {
       const r = game.cmd.removeStation(id);
       if (!r.ok) game.events.emit('notify', { day: 0, kind: 'warn', text: r.reason ?? 'cannot demolish' });

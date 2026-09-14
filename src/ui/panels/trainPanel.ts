@@ -14,6 +14,7 @@ import { monthLabels } from './stats';
 import { trainAgeYears } from '../../sim/train/step';
 import { consistPerformance } from '../../sim/train/performance';
 import { t } from '../../i18n/t';
+import { confirmDialog, promptDialog } from '../dialogs';
 import { cargoIcon, classCargo } from '../icons';
 import type { PanelHost } from './PanelHost';
 import { stateText } from './linePanel';
@@ -50,19 +51,17 @@ export function registerTrainPanels(host: PanelHost): void {
       null,
       host.header(t('train') + ': ', title),
       row(
-        button(t('rename'), () => {
-          const name = prompt('Train name', train.name);
-          if (name) game.cmd.renameTrain(id, name);
-        }, 'btn small'),
+        button(t('rename'), () => promptDialog(game, 'Train name', train.name, (name) => game.cmd.renameTrain(id, name)), 'btn small'),
         button('Go to', () => {
           const p = trainHeadWorld(game.state, game.rt, train, poseScratch);
           game.cam.centerOn(p.x, p.y);
         }, 'btn small'),
         button(t('sell'), () => {
-          if (!confirm(`Sell ${train.name} for ${fmtMoney(consistInfo(train).value * B.sellRefund)}?`)) return;
-          game.cmd.sellTrain(id);
-          game.select('none', -1);
-          host.close();
+          confirmDialog(game, `Sell ${train.name}?`, `You get ${fmtMoney(consistInfo(train).value * B.sellRefund)} back (50% of the purchase value).`, () => {
+            game.cmd.sellTrain(id);
+            game.select('none', -1);
+            host.close();
+          }, 'Sell', true);
         }, 'btn small danger'),
       ),
       kv(t('line'), lineEl),

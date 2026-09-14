@@ -222,3 +222,40 @@ describe('double track', () => {
     for (let g = 0; g < rt.segments.segmentCount; g++) expect(rt.segCount[g]).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe('double track removal', () => {
+  it('downgrades an idle double segment with a refund and refuses while trains use it', () => {
+    const { state, rt, events, cmd } = setup(4242);
+    const ta = state.towns[0];
+    const tb = state.towns
+      .slice(1)
+      .map((t) => ({ t, d: Math.hypot(t.x - ta.x, t.y - ta.y) }))
+      .sort((a, b) => a.d - b.d)[0].t;
+    const sa = freeTileNear(state, rt.tileOcc, ta.x, ta.y);
+    const sb = freeTileNear(state, rt.tileOcc, tb.x, tb.y);
+    const a = cmd.placeStation(sa).id!;
+    const b = cmd.placeStation(sb).id!;
+    const pv = buildRoute(state.world, rt.tileOcc, sa, sb, rt.astar);
+    cmd.buildTrack(pv.nodes);
+    const w = state.world.width;
+    const mid = pv.nodes[2];
+    const next = pv.nodes[3];
+    const dx = (next % w) - (mid % w);
+    const dy = ((next / w) | 0) - ((mid / w) | 0);
+    const dir = [1, 0, 1, 1, 0, 1, -1, 1, -1, 0, -1, -1, 0, -1, 1, -1].findIndex((_, i, arr) => i % 2 === 0 && arr[i] === dx && arr[i + 1] === dy) / 2;
+    expect(cmd.downgradeSegment(mid, dir as 0).ok).toBe(false); // not double yet
+    expect(cmd.upgradeSegment(mid, dir as 0).ok).toBe(true);
+    const line = cmd.createLine().id!;
+    cmd.addStop(line, a);
+    cmd.addStop(line, b);
+    cmd.buyTrain(line, 0, [0]);
+    for (let i = 0; i < 40; i++) tick(state, rt, events); // the train is now on the segment
+    expect(state.trains[0].state).toBe(TrainState.Moving);
+    expect(cmd.downgradeSegment(mid, dir as 0).ok).toBe(false);
+    cmd.sellTrain(state.trains[0].id);
+    const before = state.economy.money;
+    expect(cmd.downgradeSegment(mid, dir as 0).ok).toBe(true);
+    expect(state.economy.money).toBeGreaterThan(before);
+    expect(cmd.downgradeSegment(mid, dir as 0).ok).toBe(false);
+  });
+});

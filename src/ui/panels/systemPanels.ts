@@ -11,7 +11,7 @@ import { fmtMoney, fmtMoneyShort } from '../format';
 import { barChart, lineChart } from '../chart';
 import { monthLabels } from './stats';
 import { t } from '../../i18n/t';
-import { showAchievements } from '../dialogs';
+import { confirmDialog, showAchievements } from '../dialogs';
 import { ACHIEVEMENTS } from '../../sim/achievements';
 import { sfx } from '../sfx';
 import { cargoIcon } from '../icons';
@@ -169,11 +169,12 @@ export function registerSystemPanels(host: PanelHost): void {
       row(h('span', { className: 'muted' }, 'Map size '), sizeSel),
       row(
         button(t('newGame'), () => {
-          if (!confirm('Start a new game? Unsaved progress is lost.')) return;
-          setSetting('startMoney', Number(moneySel.value));
-          setSetting('mapSize', sizeSel.value);
-          game.newGame(seedFromString(seedInput.value || '1'), Number(moneySel.value), sizeSel.value as MapSizeKey);
-          host.close();
+          confirmDialog(game, 'Start a new game?', 'Unsaved progress is lost. Save first if you want to keep the current game.', () => {
+            setSetting('startMoney', Number(moneySel.value));
+            setSetting('mapSize', sizeSel.value);
+            game.newGame(seedFromString(seedInput.value || '1'), Number(moneySel.value), sizeSel.value as MapSizeKey);
+            host.close();
+          }, 'Start new game', true);
         }, 'btn primary'),
       ),
       h('h3', null, 'Saves'),
