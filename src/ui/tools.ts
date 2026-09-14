@@ -1,0 +1,180 @@
+import type { Game } from '../app/Game';
+import { TILE_PX } from '../core/constants';
+import { DIR_DX, DIR_DY } from '../core/grid';
+import type { Dir } from '../core/types';
+import { hitTestTrain } from '../render/dynamicLayer';
+import { buildRoute } from '../track/buildRoute';
+import { hasEdge } from '../track/graph';
+import type { ToolName } from './uiState';
+
+export interface Tool {
+  onClick(tile: number, ev: PointerEvent, wx: number, wy: number): void;
+  onMove(tile: number, wx: number, wy: number): void;
+  onCancel(): void;
+}
+
+export interface ToolHost {
+  toast(kind: 'info' | 'warn', text: string): void;
+  openPanel(name: string, arg?: number): void;
+  closePanel(): void;
+}
+
+export function createTools(game: Game, host: ToolHost): Record<ToolName, Tool> {
+  const ui = game.ui;
+
+  const inspect: Tool = {
+    onClick(tile, _ev, wx, wy) {
+      const rt = game.rt;
+      const trainId = hitTestTrain(game.state, rt, wx, wy, 10);
+      if (trainId >= 0) return game.select('train', trainId);
+      if (tile < 0) return game.select('none', -1);
+      const st = rt.stationAt[tile];
+      if (st >= 0) return game.select('station', st);
+      const ind = rt.industryAt[tile];
+      if (ind >= 0) return game.select('industry', ind);
+      const town = rt.townAt[tile];
+      if (town >= 0) return game.select('town', town);
+      game.select('none', -1);
+    },
+    onMove() {},
+    onCancel() {
+      game.select('none', -1);
+      host.closePanel();
+    },
+  };
+
+  let lastPreviewTile = -1;
+  const track: Tool = {
+    onClick(tile, ev) {
+      if (tile < 0) return;
+      if (ui.trackAnchor < 0) {
+        ui.trackAnchor = tile;
+        ui.trackPreview = null;
+        lastPreviewTile = -1;
+        return;
+      }
+      if (tile === ui.trackAnchor) {
+        ui.trackAnchor = -1;
+        ui.trackPreview = null;
+        return;
+      }
+      const pv = ui.trackPreview && lastPreviewTile === tile ? ui.trackPreview : buildRoute(game.state.world, game.rt.tileOcc, ui.trackAnchor, tile, game.rt.astar);
+      if (!pv.ok) {
+        host.toast('warn', pv.reason ?? 'cannot build here');
+        return;
+      }
+      const res = game.cmd.buildTrack(pv.nodes);
+      if (!res.ok) {
+        host.toast('warn', res.reason ?? 'cannot build');
+        return;
+      }
+      ui.trackAnchor = ev.shiftKey ? tile : -1;
+      ui.trackPreview = null;
+      lastPreviewTile = -1;
+    },
+    onMove(tile) {
+      if (ui.trackAnchor < 0 || tile < 0) return;
+      if (tile === lastPreviewTile) return;
+      lastPreviewTile = tile;
+      ui.trackPreview = tile === ui.trackAnchor ? null : buildRoute(game.state.world, game.rt.tileOcc, ui.trackAnchor, tile, game.rt.astar);
+    },
+    onCancel() {
+      if (ui.trackAnchor >= 0) {
+        ui.trackAnchor = -1;
+        ui.trackPreview = null;
+      } else game.setTool('inspect');
+    },
+  };
+
+  const station: Tool = {
+    onClick(tile) {
+      if (tile < 0) return;
+      const res = game.cmd.placeStation(tile);
+      if (!res.ok) return host.toast('warn', res.reason ?? 'cannot build here');
+      game.setTool('inspect');
+      game.select('station', res.id!);
+    },
+    onMove(tile) {
+      ui.stationHover = tile;
+      ui.stationHoverOk = game.cmd.canPlaceStation(tile);
+    },
+    onCancel() {
+      game.setTool('inspect');
+    },
+  };
+
+  const demolish: Tool = {
+    onClick(tile) {
+      if (ui.demolishStation >= 0) {
+        const res = game.cmd.removeStation(ui.demolishStation);
+        if (!res.ok) host.toast('warn', res.reason ?? 'cannot demolish');
+        ui.demolishStation = -1;
+        return;
+      }
+      if (ui.demolishEdge) {
+        const res = game.cmd.removeEdge(ui.demolishEdge.t, ui.demolishEdge.d);
+        if (!res.ok) host.toast('warn', res.reason ?? 'cannot demolish');
+        ui.demolishEdge = null;
+        this.onMove(tile, 0, 0);
+      }
+    },
+    onMove(tile, wx, wy) {
+      ui.demolishEdge = null;
+      ui.demolishStation = -1;
+      if (tile < 0) return;
+      const w = game.state.world.width;
+      const st = game.rt.stationAt[tile];
+      const cx = ((tile % w) + 0.5) * TILE_PX;
+      const cy = (((tile / w) | 0) + 0.5) * TILE_PX;
+      if (st >= 0 && Math.hypot(wx - cx, wy - cy) < 11) {
+        ui.demolishStation = st;
+        return;
+      }
+      // nearest edge from this tile's center within 9 px
+      let best: { t: number; d: Dir } | null = null;
+      let bd = 9;
+      const mask = game.state.world.track[tile];
+      for (let d = 0; d < 8; d++) {
+        if (!(mask & (1 << d))) continue;
+        const nx = cx + DIR_DX[d] * TILE_PX;
+        const ny = cy + DIR_DY[d] * TILE_PX;
+        const dist = pointSegDist(wx, wy, cx, cy, nx, ny);
+        if (dist < bd) {
+          bd = dist;
+          best = { t: tile, d: d as Dir };
+        }
+      }
+      if (best && hasEdge(game.state.world, best.t, best.d)) ui.demolishEdge = best;
+    },
+    onCancel() {
+      game.setTool('inspect');
+    },
+  };
+
+  const line: Tool = {
+    onClick(tile) {
+      if (tile < 0 || ui.editingLine < 0) return;
+      const st = game.rt.stationAt[tile];
+      if (st < 0) return host.toast('info', 'Click a station to add it as a stop');
+      const res = game.cmd.addStop(ui.editingLine, st);
+      if (!res.ok) host.toast('warn', res.reason ?? 'cannot add stop');
+    },
+    onMove() {},
+    onCancel() {
+      const id = ui.editingLine;
+      game.setTool('inspect');
+      if (id >= 0) game.select('line', id);
+    },
+  };
+
+  return { inspect, track, station, demolish, line };
+}
+
+function pointSegDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const l2 = dx * dx + dy * dy;
+  let t = l2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+}

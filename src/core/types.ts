@@ -1,0 +1,219 @@
+// All persistent game state. Everything here is plain data (no methods) so that
+// save/load is JSON + base64 for the two typed-array tile layers.
+
+export type Id = number; // -1 = none
+
+export const Terrain = { Water: 0, Grass: 1, Forest: 2, Hills: 3, Mountain: 4 } as const;
+export type Terrain = (typeof Terrain)[keyof typeof Terrain];
+
+// Clockwise from East. opposite(d) = (d + 4) & 7. Diagonals are odd.
+export const Dir = { E: 0, SE: 1, S: 2, SW: 3, W: 4, NW: 5, N: 6, NE: 7 } as const;
+export type Dir = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+export interface World {
+  seed: number;
+  width: number;
+  height: number;
+  /** Terrain per tile, index t = y * width + x */
+  terrain: Uint8Array;
+  /** 8-bit mask per tile; bit d set <=> track edge from tile toward dir d.
+   *  Invariant: bit d on t <=> bit opposite(d) on neighbor(t, d). */
+  track: Uint8Array;
+}
+
+export interface Town {
+  id: Id;
+  name: string;
+  x: number;
+  y: number;
+  population: number;
+  /** building tiles (grows over time) */
+  tiles: number[];
+  growthPoints: number;
+  /** per CargoId: units delivered to this town this month */
+  deliveredMonth: number[];
+  deliveredLastMonth: number[];
+}
+
+export interface Industry {
+  id: Id;
+  type: number; // IndustryTypeId
+  name: string;
+  /** top-left of the 2x2 footprint */
+  x: number;
+  y: number;
+  /** 1..8, production multiplier 1.3^(level-1) */
+  level: number;
+  /** fractional units accumulated per output (index into type.outputs) */
+  outputAccum: number[];
+  /** per input cargo (index into type.inputs), units waiting to be processed */
+  inputStock: number[];
+  producedMonth: number;
+  transportedMonth: number;
+  producedLastMonth: number;
+  transportedLastMonth: number;
+  monthsUnserved: number;
+  lowServiceMonths: number;
+}
+
+export interface CargoPile {
+  cargo: number; // CargoId
+  dest: Id; // destination station id
+  amount: number;
+  /** weighted average age in days */
+  ageDays: number;
+}
+
+export interface Station {
+  id: Id;
+  name: string;
+  tile: number;
+  /** 1..4 = max trains dwelling simultaneously */
+  platforms: number;
+  /** merged by (cargo, dest) */
+  piles: CargoPile[];
+  /** per CargoId, 0..1 */
+  rating: number[];
+  /** per CargoId, day of last pickup or -1 */
+  lastPickupDay: number[];
+  /** per CargoId, km/h of the last train that picked up */
+  lastPickupSpeed: number[];
+  /** per CargoId, true once the cargo has ever been offered here */
+  seen: boolean[];
+  builtDay: number;
+}
+
+export interface LineStop {
+  stationId: Id;
+  noLoad: boolean;
+  noUnload: boolean;
+  fullLoad: boolean;
+}
+
+export interface Line {
+  id: Id;
+  name: string;
+  /** index into palette */
+  color: number;
+  mode: 'loop' | 'pingpong';
+  stops: LineStop[];
+  revenueMonth: number;
+  costMonth: number;
+  revenueLastMonth: number;
+  costLastMonth: number;
+}
+
+export interface Wagon {
+  spec: number; // WagonSpecId
+  cargo: number; // CargoId or -1 if empty
+  dest: Id; // destination station of the load
+  amount: number;
+  /** day the load was picked up (transit-time bonus) */
+  loadedDay: number;
+  /** station tile where loaded (distance for revenue) */
+  originTile: number;
+}
+
+export const TrainState = { Moving: 0, Dwelling: 1, NoRoute: 2, Stopped: 3, Broken: 4, WaitDepart: 5 } as const;
+export type TrainState = (typeof TrainState)[keyof typeof TrainState];
+
+export interface Train {
+  id: Id;
+  name: string;
+  lineId: Id;
+  loco: number; // LocoSpecId
+  wagons: Wagon[];
+  boughtDay: number;
+  reliability: number; // 0..1
+  /** index into line.stops of the CURRENT TARGET stop */
+  stopIndex: number;
+  /** pingpong direction */
+  dir: 1 | -1;
+  /** tile nodes; path[0] = departure station tile, last = target station tile */
+  path: number[];
+  /** cumulative length at each node (tiles), same length as path */
+  cum: number[];
+  /** head position along path in tiles */
+  pathPos: number;
+  prevPathPos: number;
+  /** head is on edge path[i] -> path[i+1] */
+  headEdge: number;
+  tailEdge: number;
+  /** km/h */
+  speed: number;
+  state: TrainState;
+  /** -1 unless a platform is reserved */
+  platformSlot: number;
+  /** station id the platform slot belongs to (-1 if none) */
+  platformStation: Id;
+  dwellTicks: number;
+  /** consecutive ticks waiting behind a blocker (deadlock timeout) */
+  blockedTicks: number;
+  /** -1 or edge index after which ghost mode ends */
+  ghostUntilEdge: number;
+  /** halt at the next station for editing */
+  stopAtNext: boolean;
+  /** ticks left broken down */
+  brokenTicks: number;
+  /** direction of the last arrival edge (for drawing the train inside the station box) */
+  boxDir: Dir;
+  profitMonth: number;
+  profitLastMonth: number;
+  profitYear: number;
+}
+
+export interface LedgerMonth {
+  year: number;
+  month: number; // 0..11
+  /** per CargoId */
+  revenue: number[];
+  trainRunning: number;
+  trackMaint: number;
+  stationMaint: number;
+  construction: number;
+  vehicles: number;
+  loanInterest: number;
+}
+
+export interface Economy {
+  money: number;
+  loan: number;
+  /** [0] = current month, newest first, max 36 */
+  ledger: LedgerMonth[];
+  yearly: { year: number; net: number }[];
+  monthsInsolvent: number;
+}
+
+export interface Notification {
+  day: number;
+  kind: 'info' | 'warn' | 'money' | 'good';
+  text: string;
+  /** tile to focus when clicked */
+  focus?: number;
+}
+
+export interface GameState {
+  schema: number;
+  tick: number;
+  startYear: number;
+  speed: 0 | 1 | 2 | 4 | 8;
+  /** mulberry32 state */
+  rng: number;
+  nextId: number;
+  world: World;
+  towns: Town[];
+  industries: Industry[];
+  stations: Station[];
+  lines: Line[];
+  trains: Train[];
+  economy: Economy;
+  /** ring, max 50, newest last */
+  notifications: Notification[];
+  achievements: string[];
+  /** counters for achievements / stats */
+  stats: {
+    paxDelivered: number;
+    cargoDelivered: number;
+    revenueTotal: number;
+  };
+}
