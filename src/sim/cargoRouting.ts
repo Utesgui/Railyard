@@ -142,3 +142,15 @@ export function bestStationForTown(state: GameState, rt: Runtime, from: Id, town
   }
   return best;
 }
+
+/** Population of towns that have at least one station on a line covering them (each town counted once). */
+export function servedPopulation(state: GameState, rt: Runtime): { population: number; towns: number } {
+  const ids = new Set<number>();
+  for (const st of state.stations) {
+    if (!rt.served.has(st.id)) continue;
+    for (const t of rt.catchment.get(st.id)?.towns ?? []) ids.add(t);
+  }
+  let population = 0;
+  for (const id of ids) population += rt.townById.get(id)?.population ?? 0;
+  return { population, towns: ids.size };
+}

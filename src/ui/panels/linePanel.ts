@@ -89,7 +89,7 @@ export function registerLinePanels(host: PanelHost): void {
         modeBtn,
         button(t('deleteLine'), () => {
           const r = game.cmd.deleteLine(id);
-          if (!r.ok) game.events.emit('notify', { day: 0, kind: 'warn', text: r.reason ?? 'cannot delete' });
+          if (!r.ok) game.events.emit('notify', { id: 0, day: 0, kind: 'warn', text: r.reason ?? 'cannot delete' });
           else {
             game.select('none', -1);
             host.open('lines');

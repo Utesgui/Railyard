@@ -52,6 +52,15 @@ const MIGRATIONS: Record<number, Migration> = {
     for (const l of r.economy.ledger) l.other ??= 0;
     return raw;
   },
+  // 4 -> 5: notification ids + seen counter, explicit contract delivery months
+  4: (raw) => {
+    const r = raw as { notifications: Record<string, unknown>[]; notificationSeq?: number; notificationsSeen?: number; contracts: Record<string, unknown>[] };
+    r.notifications.forEach((n, i) => (n.id ??= i + 1));
+    r.notificationSeq ??= r.notifications.length;
+    r.notificationsSeen ??= r.notificationSeq;
+    for (const c of r.contracts) c.deliveryMonths ??= (c.months as number | undefined) ?? 12;
+    return raw;
+  },
 };
 
 export function migrate(raw: Record<string, unknown>, from: number): Record<string, unknown> {

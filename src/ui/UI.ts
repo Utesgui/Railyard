@@ -1,6 +1,5 @@
 import type { Game } from '../app/Game';
 import { TERRAIN_NAMES } from '../world/terrain';
-import { h } from './dom';
 import { createToolbar } from './hud/toolbar';
 import { installToasts } from './hud/toasts';
 import { createTopbar } from './hud/topbar';
@@ -9,37 +8,34 @@ import { PanelHost } from './panels/PanelHost';
 import { registerEntityPanels } from './panels/entityPanels';
 import { registerLinePanels } from './panels/linePanel';
 import { registerStationPanel } from './panels/stationPanel';
-import { applyUiScale, registerSystemPanels } from './panels/systemPanels';
+import { registerSystemPanels } from './panels/systemPanels';
 import { registerContractsPanel } from './panels/contractsPanel';
-import { getSetting } from '../save/storage';
 import { registerTrainPanels } from './panels/trainPanel';
 import { createTools } from './tools';
-import type { SelectionKind, ToolName } from './uiState';
-import { closeDialog, isDialogOpen, showAchievements, showGameOver, showYearSummary } from './dialogs';
-import { dismissTutorial, tutorialText } from './tutorial';
+import type { SelectionKind } from './uiState';
+import { closeDialog, initDialogs, isDialogOpen, showAchievements, showGameOver, showHelp, showYearSummary } from './dialogs';
+import { createContextBar } from './context';
+import { applyUiScale, currentUiScale } from './scale';
 import { sfx } from './sfx';
 
-const HINTS: Record<ToolName, string> = {
-  inspect: '',
-  track: 'Click a start tile, then the end tile to build the routed track. Middle-click adds waypoints to steer the route. Shift+click keeps building. Right-click / Esc steps back.',
-  station: 'Click a free tile within 3 tiles of a town or industry. Right-click / Esc cancels.',
-  demolish: 'Click a piece of track or a station to remove it (25% refund).',
-  line: 'Click stations on the map to add them as stops. Esc when done.',
-  upgrade: 'Hover a track to see its segment (junction to junction); click to add a second track so trains can pass in both directions. Click a double-track segment (red) to remove the second track again.',
-};
+const ENTITY_PANELS: SelectionKind[] = ['station', 'line', 'train', 'industry', 'town'];
 
 /** Builds and wires the DOM HUD around the canvas. */
 export class UI {
   readonly panels: PanelHost;
   private topbar;
   private toolbar;
+  private context;
   private tooltip: HTMLElement;
-  private hint: HTMLElement;
+  private hud: HTMLElement;
+  private stage: HTMLElement;
 
   constructor(private game: Game) {
-    const hud = document.getElementById('hud')!;
+    this.hud = document.getElementById('hud')!;
+    this.stage = document.getElementById('stage')!;
     const panelEl = document.getElementById('panel')!;
     this.panels = new PanelHost(panelEl, game);
+    initDialogs(game);
     registerStationPanel(this.panels);
     registerEntityPanels(this.panels);
     registerLinePanels(this.panels);
@@ -49,15 +45,18 @@ export class UI {
 
     this.topbar = createTopbar(game, this.panels);
     document.getElementById('topbar')!.appendChild(this.topbar.el);
-    this.toolbar = createToolbar(game, this.panels);
+    this.toolbar = createToolbar(game, this.panels, {
+      toggleMinimap: () => this.toggleMinimap(),
+      minimapShown: () => this.hud.classList.contains('show-minimap'),
+    });
     document.getElementById('toolbar')!.appendChild(this.toolbar.el);
     installToasts(game, document.getElementById('toasts')!);
+    this.context = createContextBar(game, document.getElementById('context')!);
     this.tooltip = document.getElementById('tooltip')!;
-    this.hint = document.getElementById('hint')!;
-    applyUiScale(getSetting<number>('uiScale', 1));
+    applyUiScale(currentUiScale());
 
     const tools = createTools(game, {
-      toast: (kind, text) => game.events.emit('notify', { day: 0, kind, text }),
+      toast: (kind, text) => game.events.emit('notify', { id: 0, day: 0, kind, text }),
       openPanel: (name, arg) => this.panels.open(name, arg),
       closePanel: () => this.panels.close(),
     });
@@ -70,25 +69,24 @@ export class UI {
     game.events.on('selection', () => this.onSelection());
     game.events.on('toolChanged', (tool) => {
       game.canvas.className = tool === 'inspect' ? '' : `tool-${tool}`;
-      this.refreshHint();
+      this.context.update();
       this.toolbar.update();
-    });
-    this.hint.addEventListener('click', () => {
-      if (this.hint.classList.contains('tutorial')) {
-        dismissTutorial(game);
-        this.refreshHint();
-      }
     });
     game.events.on('year', () => {
       if (game.state.tick > 0) showYearSummary(game);
     });
     game.events.on('gameOver', () => showGameOver(game, () => this.panels.open('settings')));
+
     // sounds: start the audio context on the first gesture, then react to game events
     const arm = () => sfx.ensure();
     window.addEventListener('pointerdown', arm);
     window.addEventListener('keydown', arm);
-    hud.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('.btn')) sfx.play('click');
+    this.hud.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('button');
+      if (!btn) return;
+      sfx.play('click');
+      // a mouse click must not leave the button focused: Space/Enter are game hotkeys
+      if (e.detail > 0 && !btn.closest('.overlay-dialog')) btn.blur();
     });
     game.events.on('floater', (f) => {
       if (f.color === '#6fcf6f' || f.color === '#f2c14e') sfx.play('cash');
@@ -113,9 +111,10 @@ export class UI {
     game.events.on('stateReplaced', () => {
       this.panels.close();
       game.setTool('inspect');
+      this.context.update();
     });
     game.events.on('linesChanged', () => {
-      if (this.panels.isOpen('line') || this.panels.isOpen('lines')) this.panels.update();
+      if (this.panels.isOpen('line') || this.panels.isOpen('lines') || this.panels.isOpen('fleet')) this.panels.update();
     });
     game.events.on('trackChanged', () => {
       if (this.panels.isOpen('station')) this.panels.update();
@@ -130,30 +129,19 @@ export class UI {
     });
   }
 
-  private onSelection(): void {
-    const sel = this.game.ui.selection;
-    const entityPanels: SelectionKind[] = ['station', 'line', 'train', 'industry', 'town'];
-    if (sel.kind === 'none') {
-      if (this.panels.current && entityPanels.includes(this.panels.current.name as SelectionKind)) this.panels.close();
-      return;
-    }
-    this.panels.open(sel.kind, sel.id);
+  toggleMinimap(): void {
+    this.hud.classList.toggle('show-minimap');
+    this.toolbar.update();
   }
 
-  private refreshHint(): void {
-    const g = this.game;
-    const toolHint = HINTS[g.ui.tool];
-    if (toolHint) {
-      this.hint.hidden = false;
-      this.hint.className = '';
-      this.hint.textContent = toolHint;
+  private onSelection(): void {
+    const sel = this.game.ui.selection;
+    if (sel.kind === 'none') {
+      if (this.panels.current && ENTITY_PANELS.includes(this.panels.current.name as SelectionKind)) this.panels.close();
       return;
     }
-    const tut = tutorialText(g);
-    this.hint.hidden = !tut;
-    this.hint.className = tut ? 'tutorial' : '';
-    this.hint.textContent = tut;
-    this.hint.title = tut ? 'Click to dismiss the tutorial' : '';
+    if (this.panels.isOpen(sel.kind, sel.id)) return;
+    this.panels.open(sel.kind, sel.id);
   }
 
   private showTooltip(tile: number, sx: number, sy: number): void {
@@ -173,14 +161,21 @@ export class UI {
     else text = TERRAIN_NAMES[g.state.world.terrain[tile]];
     this.tooltip.textContent = text;
     this.tooltip.hidden = false;
-    const scale = getSetting<number>('uiScale', 1);
-    this.tooltip.style.left = `${(sx + 14) / scale}px`;
-    this.tooltip.style.top = `${(sy + 14) / scale}px`;
+    // canvas coordinates → stage-local CSS pixels (the HUD may be zoomed)
+    const scale = currentUiScale();
+    const r = this.stage.getBoundingClientRect();
+    this.tooltip.style.left = `${(sx - r.left) / scale + 14}px`;
+    this.tooltip.style.top = `${(sy - r.top) / scale + 14}px`;
   }
 
   private onKey(ev: KeyboardEvent, tools: ReturnType<typeof createTools>): boolean {
     const g = this.game;
     const k = ev.key.toLowerCase();
+    if (isDialogOpen()) {
+      // the dialog owns the keyboard; Escape closes it if focus escaped the overlay
+      if (k === 'escape') closeDialog();
+      return k !== 'tab';
+    }
     if (ev.ctrlKey || ev.metaKey) {
       if (k === 's') {
         g.quickSave();
@@ -192,6 +187,7 @@ export class UI {
       }
       return false;
     }
+    const togglePanel = (name: string, arg = -1) => (this.panels.isOpen(name) ? this.panels.close() : this.panels.open(name, arg));
     switch (k) {
       case ' ':
         g.cmd.togglePause();
@@ -221,22 +217,33 @@ export class UI {
         g.setTool('upgrade');
         return true;
       case 'l':
-        this.panels.isOpen('lines') ? this.panels.close() : this.panels.open('lines');
+        togglePanel('lines');
         return true;
       case 'v':
-        this.panels.isOpen('depot') ? this.panels.close() : this.panels.open('depot', g.ui.selection.kind === 'line' ? g.ui.selection.id : -1);
+        if (this.panels.has('fleet')) togglePanel('fleet');
+        else togglePanel('depot', g.ui.selection.kind === 'line' ? g.ui.selection.id : -1);
         return true;
       case 'f':
-        this.panels.isOpen('finances') ? this.panels.close() : this.panels.open('finances');
+        togglePanel('finances');
         return true;
       case 'o':
-        this.panels.isOpen('settings') ? this.panels.close() : this.panels.open('settings');
+        togglePanel('settings');
         return true;
       case 'c':
-        this.panels.isOpen('contracts') ? this.panels.close() : this.panels.open('contracts');
+        togglePanel('contracts');
+        return true;
+      case 'a':
+        togglePanel('alerts');
         return true;
       case 'h':
         g.ui.showCatchment = !g.ui.showCatchment;
+        return true;
+      case 'm':
+        this.toggleMinimap();
+        return true;
+      case '?':
+      case 'f1':
+        showHelp(g);
         return true;
       case '+':
       case '=':
@@ -246,8 +253,7 @@ export class UI {
         g.cam.zoomStep(g.cam.vw / 2, g.cam.vh / 2, -1);
         return true;
       case 'escape':
-        if (isDialogOpen()) closeDialog();
-        else if (g.ui.tool !== 'inspect') tools[g.ui.tool].onCancel();
+        if (g.ui.tool !== 'inspect') tools[g.ui.tool].onCancel();
         else if (this.panels.current) {
           this.panels.close();
           g.select('none', -1);
@@ -262,10 +268,6 @@ export class UI {
     this.topbar.update();
     this.toolbar.update();
     this.panels.update();
-    if (this.game.ui.tool === 'inspect') this.refreshHint();
-  }
-
-  static mount(): HTMLElement {
-    return h('div');
+    this.context.update();
   }
 }

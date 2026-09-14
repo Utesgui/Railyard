@@ -187,14 +187,13 @@ export function registerTrainPanels(host: PanelHost): void {
     const totals = h('div');
     const buyBtn = button(refitTrain ? 'Apply refit' : t('buy'), () => {
       if (refitTrain) {
-        let r = game.cmd.refitTrain(refitTrainId, chosen);
-        if (r.ok && selectedLoco !== refitTrain.loco) r = game.cmd.replaceLoco(refitTrainId, selectedLoco);
-        if (!r.ok) return game.events.emit('notify', { day: 0, kind: 'warn', text: r.reason ?? 'cannot refit' });
+        const r = game.cmd.refitTrain(refitTrainId, selectedLoco, chosen);
+        if (!r.ok) return game.events.emit('notify', { id: 0, day: 0, kind: 'warn', text: r.reason ?? 'cannot refit' });
         game.select('train', refitTrainId);
         return;
       }
       const r = game.cmd.buyTrain(lineId, selectedLoco, chosen);
-      if (!r.ok) return game.events.emit('notify', { day: 0, kind: 'warn', text: r.reason ?? 'cannot buy' });
+      if (!r.ok) return game.events.emit('notify', { id: 0, day: 0, kind: 'warn', text: r.reason ?? 'cannot buy' });
       game.select('train', r.id!);
     }, 'btn primary');
 

@@ -18,10 +18,8 @@ import { cargoIcon } from '../icons';
 import type { PanelHost } from './PanelHost';
 
 /** Scale the whole HUD (panels, bars, toasts); the map canvas is unaffected. */
-export function applyUiScale(scale: number): void {
-  const hud = document.getElementById('hud');
-  if (hud) (hud.style as unknown as { zoom: string }).zoom = String(scale);
-}
+import { applyUiScale } from '../scale';
+export { applyUiScale };
 
 export function registerSystemPanels(host: PanelHost): void {
   host.register('finances', (game: Game, host) => {
@@ -152,7 +150,7 @@ export function registerSystemPanels(host: PanelHost): void {
     const importInput = h('input', { type: 'file', attrs: { accept: '.json,application/json' }, style: { display: 'none' }, onChange: () => {
       const f = importInput.files?.[0];
       if (!f) return;
-      importFromFile(f).then((s) => game.loadState(s)).catch((e) => game.events.emit('notify', { day: 0, kind: 'warn', text: `Import failed: ${(e as Error).message}` }));
+      importFromFile(f).then((s) => game.loadState(s)).catch((e) => game.events.emit('notify', { id: 0, day: 0, kind: 'warn', text: `Import failed: ${(e as Error).message}` }));
       importInput.value = '';
     } });
     const volume = h('input', { type: 'range', min: '0', max: '100', step: '5', value: String(Math.round(sfx.volume * 100)), onInput: () => { sfx.ensure(); sfx.setVolume(Number(volume.value) / 100); sfx.play('click'); } });

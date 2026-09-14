@@ -65,16 +65,21 @@ export function describeContract(state: GameState, rt: Runtime, c: Contract): st
 export function monthEndContracts(state: GameState, rt: Runtime, ev: Events | null): void {
   const day = tickToDay(state.tick);
   for (const c of state.contracts) {
-    if (c.status === 'offered' && day >= c.deadlineDay) c.status = 'failed';
-    else if (c.status === 'active' && day >= c.deadlineDay) {
+    if (c.status === 'offered' && day >= c.deadlineDay) {
+      // an offer that was never accepted simply lapses: no penalty
+      c.status = 'expired';
+      c.closedDay = day;
+    } else if (c.status === 'active' && day >= c.deadlineDay) {
       c.status = 'failed';
+      c.closedDay = day;
+      c.penaltyCharged = c.penalty;
       spend(state, c.penalty, 'other');
       notify(state, ev, 'warn', `Contract failed: ${describeContract(state, rt, c)} (penalty $${c.penalty.toLocaleString('en-US')})`, targetTile(state, rt, c));
       ev?.emit('contract', { id: c.id, status: 'failed' });
     }
   }
   // purge old history
-  state.contracts = state.contracts.filter((c) => c.status === 'offered' || c.status === 'active' || day - c.deadlineDay < 12 * DAYS_PER_MONTH);
+  state.contracts = state.contracts.filter((c) => c.status === 'offered' || c.status === 'active' || day - (c.closedDay ?? c.deadlineDay) < 12 * DAYS_PER_MONTH);
 
   const offered = state.contracts.filter((c) => c.status === 'offered').length;
   if (offered >= MAX_OFFERS || state.stations.length === 0 || day < 2 * DAYS_PER_MONTH) return;
@@ -99,9 +104,9 @@ export function monthEndContracts(state: GameState, rt: Runtime, ev: Events | nu
     penalty: Math.round(reward * 0.3),
     offeredDay: day,
     deadlineDay: day + OFFER_DAYS,
+    deliveryMonths: months,
     status: 'offered',
   };
-  (contract as Contract & { months?: number }).months = months;
   state.contracts.push(contract);
   notify(state, ev, 'info', `Contract offer: ${describeContract(state, rt, contract)} for $${reward.toLocaleString('en-US')}`, targetTile(state, rt, contract));
   ev?.emit('contract', { id: contract.id, status: 'offered' });
@@ -110,16 +115,16 @@ export function monthEndContracts(state: GameState, rt: Runtime, ev: Events | nu
 export function acceptContract(state: GameState, id: number): boolean {
   const c = state.contracts.find((x) => x.id === id);
   if (!c || c.status !== 'offered') return false;
-  const months = (c as Contract & { months?: number }).months ?? 12;
   c.status = 'active';
-  c.deadlineDay = tickToDay(state.tick) + months * DAYS_PER_MONTH;
+  c.deadlineDay = tickToDay(state.tick) + c.deliveryMonths * DAYS_PER_MONTH;
   return true;
 }
 
 export function declineContract(state: GameState, id: number): boolean {
-  const i = state.contracts.findIndex((x) => x.id === id && x.status === 'offered');
-  if (i < 0) return false;
-  state.contracts.splice(i, 1);
+  const c = state.contracts.find((x) => x.id === id && x.status === 'offered');
+  if (!c) return false;
+  c.status = 'declined';
+  c.closedDay = tickToDay(state.tick);
   return true;
 }
 
@@ -135,6 +140,7 @@ export function contractDelivery(state: GameState, rt: Runtime, ev: Events | nul
     c.progress += amount;
     if (c.progress >= c.amount) {
       c.status = 'done';
+      c.closedDay = tickToDay(state.tick);
       earn(state, c.reward, cargo);
       notify(state, ev, 'good', `Contract completed: ${describeContract(state, rt, c)} – reward $${c.reward.toLocaleString('en-US')}`, station.tile);
       ev?.emit('floater', { tile: station.tile, text: `+$${c.reward.toLocaleString('en-US')} contract`, color: '#f2c14e' });

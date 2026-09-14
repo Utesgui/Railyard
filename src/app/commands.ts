@@ -7,7 +7,7 @@ import { B } from '../data/balance';
 import { LOCOS, WAGONS, locosAvailable, wagonsAvailable } from '../data/vehicles';
 import { repayLoan, spend, takeLoan } from '../sim/economy';
 import { acceptContract, declineContract } from '../sim/contracts';
-import { notify } from '../sim/notify';
+import { markNotificationsSeen, notify } from '../sim/notify';
 import { consistInfo } from '../sim/train/consist';
 import { placeInStation, releasePlatform, startDwellAt } from '../sim/train/dwell';
 import { addEdge, canAddEdge, doubleUpgradeCost, edgeBuildCost, hasEdge, isDouble, removeEdge as removeEdgeRaw, setDouble } from '../track/graph';
@@ -21,6 +21,27 @@ export interface CmdResult {
   ok: boolean;
   reason?: string;
   id?: number;
+}
+
+export interface RefitQuote {
+  ok: boolean;
+  reason?: string;
+  /** false = the draft equals the current train: applying it is a free no-op */
+  changed: boolean;
+  locoChanged: boolean;
+  locoPrice: number;
+  locoRefund: number;
+  wagonsBought: number[];
+  wagonsSold: number[];
+  /** per draft slot: index of the existing wagon that stays (with its cargo) or null when bought new */
+  keep: (number | null)[];
+  wagonCost: number;
+  wagonRefund: number;
+  /** cargo units on wagons that would be sold */
+  cargoLost: number;
+  /** total charge (negative = credit) */
+  net: number;
+  affordable: boolean;
 }
 
 const ok = (id?: number): CmdResult => ({ ok: true, id });
@@ -488,40 +509,95 @@ export class Commands {
     return ok();
   }
 
-  /** Replace the wagons of a stopped train. */
-  refitTrain(id: Id, wagonSpecs: number[]): CmdResult {
+  /**
+   * Price and validate a refit (new locomotive and/or wagon list) without changing anything.
+   * Wagons whose type is kept stay on the train with their cargo; only the difference is bought / sold.
+   */
+  quoteRefit(id: Id, locoId: number, wagonSpecs: number[]): RefitQuote {
     const s = this.state;
     const train = this.rt.trainById.get(id);
-    if (!train) return fail('no train');
-    if (train.state !== TrainState.Stopped) return fail('stop the train first');
-    if (wagonSpecs.length > B.maxWagons) return fail('too many wagons');
+    const q: RefitQuote = {
+      ok: false,
+      changed: false,
+      locoChanged: false,
+      locoPrice: 0,
+      locoRefund: 0,
+      wagonsBought: [],
+      wagonsSold: [],
+      keep: [],
+      wagonCost: 0,
+      wagonRefund: 0,
+      cargoLost: 0,
+      net: 0,
+      affordable: true,
+    };
+    if (!train) return { ...q, reason: 'no train' };
+    // match draft slots to existing wagons of the same type (prefer loaded ones so no cargo is lost)
+    const pool = train.wagons.map((wg, i) => ({ wg, i, used: false })).sort((a, b) => b.wg.amount - a.wg.amount);
+    const keep: (number | null)[] = wagonSpecs.map((spec) => {
+      const hit = pool.find((p) => !p.used && p.wg.spec === spec);
+      if (!hit) return null;
+      hit.used = true;
+      return hit.i;
+    });
+    q.keep = keep;
+    q.wagonsBought = wagonSpecs.filter((_, i) => keep[i] === null);
+    for (const p of pool) {
+      if (p.used) continue;
+      q.wagonsSold.push(p.wg.spec);
+      q.wagonRefund += WAGONS[p.wg.spec].price * B.sellRefund;
+      q.cargoLost += p.wg.amount;
+    }
+    for (const spec of q.wagonsBought) q.wagonCost += WAGONS[spec]?.price ?? 0;
+    q.locoChanged = locoId !== train.loco;
+    if (q.locoChanged) {
+      q.locoPrice = LOCOS[locoId]?.price ?? 0;
+      q.locoRefund = LOCOS[train.loco].price * B.sellRefund * train.reliability;
+    }
+    const orderChanged = keep.some((k, i) => k !== null && k !== i) && q.wagonsBought.length === 0 && q.wagonsSold.length === 0 && wagonSpecs.length === train.wagons.length;
+    q.changed = q.locoChanged || q.wagonsBought.length > 0 || q.wagonsSold.length > 0 || orderChanged;
+    q.net = Math.round(q.locoPrice - q.locoRefund + q.wagonCost - q.wagonRefund);
+    if (!q.changed) {
+      q.net = 0;
+      q.ok = true;
+      return q;
+    }
+    if (train.state !== TrainState.Stopped) return { ...q, reason: 'stop the train first' };
+    if (wagonSpecs.length > B.maxWagons) return { ...q, reason: `at most ${B.maxWagons} wagons` };
     const year = tickToYear(s.tick, s.startYear);
+    if (q.locoChanged && !locosAvailable(year).some((l) => l.id === locoId)) return { ...q, reason: 'locomotive not available' };
     const avail = new Set(wagonsAvailable(year).map((w) => w.id));
-    for (const w of wagonSpecs) if (!avail.has(w)) return fail('wagon not available');
-    let cost = 0;
-    for (const w of wagonSpecs) cost += WAGONS[w].price;
-    let refund = 0;
-    for (const wg of train.wagons) refund += WAGONS[wg.spec].price * B.sellRefund;
-    if (s.economy.money < cost - refund) return fail('not enough money');
-    train.wagons = wagonSpecs.map(newWagon);
-    spend(s, Math.round(cost - refund), 'vehicles');
-    return ok();
+    for (const spec of q.wagonsBought) if (!avail.has(spec)) return { ...q, reason: 'wagon type not available' };
+    q.affordable = s.economy.money >= q.net;
+    if (!q.affordable) return { ...q, reason: 'not enough money' };
+    q.ok = true;
+    return q;
   }
 
-  replaceLoco(id: Id, locoId: number): CmdResult {
+  /** Apply a refit atomically: everything is validated by quoteRefit first, then all changes are made at once. */
+  refitTrain(id: Id, locoId: number, wagonSpecs: number[]): CmdResult & { charged?: number } {
     const s = this.state;
     const train = this.rt.trainById.get(id);
     if (!train) return fail('no train');
-    if (train.state !== TrainState.Stopped) return fail('stop the train first');
-    const year = tickToYear(s.tick, s.startYear);
-    if (!locosAvailable(year).some((l) => l.id === locoId)) return fail('locomotive not available');
-    const cost = LOCOS[locoId].price - LOCOS[train.loco].price * B.sellRefund * train.reliability;
-    if (s.economy.money < cost) return fail('not enough money');
-    train.loco = locoId;
-    train.boughtDay = tickToDay(s.tick);
-    train.reliability = 1;
-    spend(s, Math.round(cost), 'vehicles');
-    return ok();
+    const q = this.quoteRefit(id, locoId, wagonSpecs);
+    if (!q.ok) return fail(q.reason ?? 'cannot refit');
+    if (!q.changed) return { ok: true, id, charged: 0 };
+    const wagons = wagonSpecs.map((spec, i) => (q.keep[i] !== null ? train.wagons[q.keep[i]!] : newWagon(spec)));
+    train.wagons = wagons;
+    if (q.locoChanged) {
+      train.loco = locoId;
+      train.boughtDay = tickToDay(s.tick);
+      train.reliability = 1;
+    }
+    spend(s, q.net, 'vehicles');
+    return { ok: true, id, charged: q.net };
+  }
+
+  /** Swap only the locomotive (kept for compatibility; goes through the atomic refit). */
+  replaceLoco(id: Id, locoId: number): CmdResult {
+    const train = this.rt.trainById.get(id);
+    if (!train) return fail('no train');
+    return this.refitTrain(id, locoId, train.wagons.map((w) => w.spec));
   }
 
   assignTrain(id: Id, lineId: Id): CmdResult {
@@ -546,11 +622,21 @@ export class Commands {
   // ------------------------------------------------------------------ finance
 
   takeLoan(amount = B.loanStep): CmdResult {
-    return takeLoan(this.state, amount) ? ok() : fail('loan limit reached');
+    const e = this.state.economy;
+    if (e.loan + amount > B.loanMax) return fail(`loan limit is $${B.loanMax.toLocaleString('en-US')}`);
+    return takeLoan(this.state, amount) ? ok() : fail('cannot borrow');
   }
 
   repayLoan(amount = B.loanStep): CmdResult {
-    return repayLoan(this.state, amount) ? ok() : fail('cannot repay');
+    const e = this.state.economy;
+    if (e.loan <= 0) return fail('no loan to repay');
+    const due = Math.min(amount, e.loan);
+    if (e.money < due) return fail('not enough cash to repay');
+    return repayLoan(this.state, due) ? ok() : fail('cannot repay');
+  }
+
+  markNotificationsSeen(): void {
+    markNotificationsSeen(this.state);
   }
 
   // ------------------------------------------------------------------ contracts

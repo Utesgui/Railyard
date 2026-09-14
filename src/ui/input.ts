@@ -94,6 +94,8 @@ export function installInput(game: Game, hooks: InputHooks): void {
   window.addEventListener('keydown', (e) => {
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
+    // a focused button keeps Space/Enter for itself (keyboard users activating controls)
+    if (target && target.tagName === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
     if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(e.key.toLowerCase())) {
       held.add(e.key.toLowerCase());
       e.preventDefault();

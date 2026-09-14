@@ -212,7 +212,13 @@ export interface Contract {
   offeredDay: number;
   /** offer expiry while offered; delivery deadline once accepted */
   deadlineDay: number;
-  status: 'offered' | 'active' | 'done' | 'failed';
+  /** months granted for delivery once accepted */
+  deliveryMonths: number;
+  status: 'offered' | 'active' | 'done' | 'failed' | 'expired' | 'declined';
+  /** penalty actually charged when an accepted contract failed (absent = nothing was charged / unknown for old saves) */
+  penaltyCharged?: number;
+  /** day the contract reached its final status */
+  closedDay?: number;
 }
 
 export interface Economy {
@@ -228,6 +234,8 @@ export interface Economy {
 }
 
 export interface Notification {
+  /** monotonically increasing id (survives the 50-entry ring) */
+  id: number;
   day: number;
   kind: 'info' | 'warn' | 'money' | 'good';
   text: string;
@@ -252,6 +260,10 @@ export interface GameState {
   economy: Economy;
   /** ring, max 50, newest last */
   notifications: Notification[];
+  /** last notification id handed out */
+  notificationSeq: number;
+  /** highest notification id the player has seen in the alerts list */
+  notificationsSeen: number;
   achievements: string[];
   /** counters for achievements / stats */
   stats: {

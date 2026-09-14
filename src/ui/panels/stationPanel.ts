@@ -20,12 +20,12 @@ export function registerStationPanel(host: PanelHost): void {
     const platforms = h('span');
     const upgradeBtn = button(`${t('upgradePlatform')} (${fmtMoney(B.platformCost)})`, () => {
       const r = game.cmd.upgradeStation(id);
-      if (!r.ok) game.events.emit('notify', { day: 0, kind: 'warn', text: r.reason ?? 'cannot upgrade' });
+      if (!r.ok) game.events.emit('notify', { id: 0, day: 0, kind: 'warn', text: r.reason ?? 'cannot upgrade' });
     }, 'btn small');
     const renameBtn = button(t('rename'), () => promptDialog(game, 'Station name', st.name, (name) => { game.cmd.renameStation(id, name); host.refresh(); }), 'btn small');
     const demolishBtn = button(t('demolish'), () => {
       const r = game.cmd.removeStation(id);
-      if (!r.ok) game.events.emit('notify', { day: 0, kind: 'warn', text: r.reason ?? 'cannot demolish' });
+      if (!r.ok) game.events.emit('notify', { id: 0, day: 0, kind: 'warn', text: r.reason ?? 'cannot demolish' });
       else {
         game.select('none', -1);
         host.close();

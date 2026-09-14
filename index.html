@@ -9,15 +9,18 @@
   </head>
   <body>
     <div id="app">
-      <canvas id="map"></canvas>
+      <canvas id="map" aria-label="Map"></canvas>
       <div id="hud">
-        <div id="topbar"></div>
-        <div id="panel" hidden></div>
-        <div id="toolbar"></div>
-        <div id="minimap-wrap"><canvas id="minimap"></canvas></div>
-        <div id="toasts"></div>
-        <div id="tooltip" hidden></div>
-        <div id="hint" hidden></div>
+        <header id="topbar" aria-label="Company status"></header>
+        <div id="stage">
+          <div id="toasts" aria-live="polite" aria-relevant="additions"></div>
+          <aside id="panel" class="panel" hidden aria-label="Details"></aside>
+          <div id="context" hidden></div>
+          <div id="minimap-wrap"><canvas id="minimap" aria-label="Minimap"></canvas><div class="legend"><span>Minimap</span><span class="muted">click to jump</span></div></div>
+          <div id="tooltip" hidden role="tooltip"></div>
+        </div>
+        <footer id="bottombar" aria-label="Tools"><div id="toolbar"></div></footer>
+        <div id="dialogs"></div>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

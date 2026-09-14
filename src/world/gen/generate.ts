@@ -66,6 +66,8 @@ export function generateWorld(seed: number, opts: GenOptions = {}): GameState {
     trains: [],
     economy: { money: opts.startMoney ?? B.startMoney, startMoney: opts.startMoney ?? B.startMoney, loan: 0, ledger: [newLedgerMonth(START_YEAR, 0)], yearly: [], monthsInsolvent: 0, cashHistory: [] },
     notifications: [],
+    notificationSeq: 0,
+    notificationsSeen: 0,
     achievements: [],
     stats: { paxDelivered: 0, cargoDelivered: 0, revenueTotal: 0, trainsBought: 0, byCargo: new Array(CARGO_COUNT).fill(0) },
     tutorialStep: 0,

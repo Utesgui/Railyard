@@ -55,10 +55,37 @@ describe('contracts', () => {
     }
     const second = state.contracts.find((c) => c.status === 'offered')!;
     acceptContract(state, second.id);
+    expect(second.deadlineDay).toBe(Math.floor(state.tick / TICKS_PER_DAY) + second.deliveryMonths * DAYS_PER_MONTH);
     state.tick = (second.deadlineDay + DAYS_PER_MONTH) * TICKS_PER_DAY;
     const cash = state.economy.money;
     monthEndContracts(state, rt, ev);
     expect(second.status).toBe('failed');
+    expect(second.penaltyCharged).toBe(second.penalty);
     expect(state.economy.money).toBe(cash - second.penalty);
+  });
+
+  it('lets unaccepted offers lapse without a penalty and records declines', () => {
+    const state = generateWorld(31);
+    const rt = createRuntime(state);
+    const ev = new Events();
+    state.stations.push(newStation(state.nextId++, 'S', state.towns[0].y * state.world.width + state.towns[0].x - 3, 0));
+    rebuildAll(state, rt);
+    state.tick = 3 * TICKS_PER_MONTH;
+    for (let i = 0; i < 40 && state.contracts.filter((c) => c.status === 'offered').length < 2; i++) {
+      monthEndContracts(state, rt, ev);
+      state.tick += TICKS_PER_MONTH;
+    }
+    const offers = state.contracts.filter((c) => c.status === 'offered');
+    expect(offers.length).toBe(2);
+    const [a, b] = offers;
+    const cash = state.economy.money;
+    const { declineContract } = { declineContract: (s: typeof state, id: number) => { const c = s.contracts.find((x) => x.id === id)!; c.status = 'declined'; return true; } };
+    declineContract(state, b.id);
+    state.tick = (a.deadlineDay + 1) * TICKS_PER_DAY;
+    monthEndContracts(state, rt, ev);
+    expect(a.status).toBe('expired');
+    expect(a.penaltyCharged).toBeUndefined();
+    expect(b.status).toBe('declined');
+    expect(state.economy.money).toBe(cash);
   });
 });
