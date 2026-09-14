@@ -39,7 +39,7 @@ export const B = {
   maxWagons: 8,
   /** km/h -> tiles per tick */
   speedToTilesPerTick: 0.001,
-  rollingCoef: 0.02,
+  rollingCoef: 0.06, // kN per tonne: heavy trains behind weak locomotives lose top speed
   aeroCoef: 0.0004,
   lookaheadExtra: 1.5,
   nodeStopMargin: 0.15,

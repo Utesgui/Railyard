@@ -26,6 +26,9 @@ locomotive with matching wagons. A short tutorial walks you through it on a new 
 | L / V / F / O | Lines / Vehicles / Finances / Settings |
 | Arrows, wheel, right-drag | Pan, zoom, pan |
 | Middle-click | Add a waypoint while laying track |
+| U | Double-track tool: click a segment to add a second track |
+| C | Contracts |
+| H | Toggle station coverage overlay |
 | Esc | Cancel tool / close panel / close dialog |
 | Ctrl+S / Ctrl+L | Quick save / quick load |
 
@@ -38,10 +41,14 @@ locomotive with matching wagons. A short tutorial walks you through it on a new 
   frequent, fast trains and short queues keep it high.
 - **Hubs**: cargo has a destination and transfers between lines at shared stations automatically.
 - **Traffic**: trains reserve the track ahead of them and lock single-track sections by direction;
-  add platforms or passing loops where trains queue.
+  add platforms, passing loops or upgrade busy segments to double track (one lane per direction).
+- **Contracts**: periodic offers to deliver a fixed amount of cargo to a town or industry before a
+  deadline, with a bonus on success and a penalty on failure.
+- **Maps**: four sizes from 64×48 to 176×120 tiles; towns and industries scale with the area.
 - **Eras**: steam (1900), diesel (1935), electric (1965) locomotives with different speed, power and cost.
-- **Progress**: yearly report, achievements, 12-month profit charts per line and train, station traffic
-  statistics, configurable start money and UI size in the settings.
+- **Progress**: yearly report, achievements, 12-month profit charts per line and train, cash history,
+  station traffic statistics, loaded-performance rating in the depot, synthesized sound effects,
+  configurable start money, map size, volume and UI size in the settings.
 
 ## Develop
 
