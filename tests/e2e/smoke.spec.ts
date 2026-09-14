@@ -3,10 +3,11 @@ import { expect, test } from '@playwright/test';
 declare global {
   interface Window {
     __game: {
-      game: { cam: { centerOnTile(t: number): void; worldToScreen(x: number, y: number): { sx: number; sy: number }; zoom: number }; setTool(t: string): void; select(k: string, id: number): void };
-      state: { economy: { money: number }; towns: { x: number; y: number }[]; stations: { id: number; tile: number }[]; lines: { id: number }[]; trains: { state: number }[]; world: { width: number }; tick: number };
+      game: { cam: { centerOnTile(t: number): void; worldToScreen(x: number, y: number): { sx: number; sy: number }; zoom: number }; setTool(t: string): void; select(k: string, id: number): void; ui: { tool: string } };
+      ui: { panels: { open(name: string, arg?: number): void; push(name: string, arg?: number): void; close(): void } };
+      state: { economy: { money: number }; speed: number; towns: { x: number; y: number }[]; stations: { id: number; tile: number; name: string }[]; lines: { id: number }[]; trains: { id: number; state: number }[]; world: { width: number }; tick: number; notifications: { id: number }[] };
       rt: { tileOcc: Uint8Array };
-      cmd: { setSpeed(s: number): void; createLine(): { id?: number }; addStop(l: number, s: number): { ok: boolean }; buyTrain(l: number, loco: number, w: number[]): { ok: boolean; reason?: string } };
+      cmd: { setSpeed(s: number): void; createLine(): { id?: number }; addStop(l: number, s: number): { ok: boolean }; buyTrain(l: number, loco: number, w: number[]): { ok: boolean; reason?: string; id?: number }; stopTrain(id: number): { ok: boolean } };
     };
   }
 }
@@ -61,7 +62,7 @@ test('boots, builds a line with the real tools and earns money', async ({ page }
   // stations via the station tool
   await page.keyboard.press('s');
   await clickTile(plan.sa);
-  await expect(page.locator('#panel h2')).toContainText('Station');
+  await expect(page.locator('#panel .eyebrow')).toContainText('Station');
   await page.keyboard.press('s');
   await clickTile(plan.sb);
   const stations = await page.evaluate(() => window.__game.state.stations.map((s) => s.id));

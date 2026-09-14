@@ -1,138 +1,211 @@
 import type { Game } from '../../app/Game';
 import { B } from '../../data/balance';
 import { CARGO, CARGO_COUNT } from '../../data/cargo';
-import { INDUSTRIES } from '../../data/industries';
-import { pileCap, totalWaiting } from '../../sim/station';
-import { button, clear, h, kv, row } from '../dom';
+import { hopDistance, nextHop } from '../../sim/cargoRouting';
+import { pileCap, totalWaiting, totalWaitingAll } from '../../sim/station';
+import { badge, button, clear, emptyState, h, kpi, kpis, listRow, meter, section, sectionMeta, tabs } from '../dom';
 import { fmtInt, fmtMoney, fmtPct } from '../format';
-import { cargoIcon } from '../icons';
+import { cargoIcon, cargoTag, uiIcon } from '../icons';
 import { dockedTrains } from '../../sim/train/geometry';
-import { stateText } from './linePanel';
 import { t } from '../../i18n/t';
-import { promptDialog } from '../dialogs';
+import { confirmDialog, promptDialog } from '../dialogs';
 import type { PanelHost } from './PanelHost';
+import { lineColor, openEntity, report, trainStatus } from './shared';
+
+type Tab = 'overview' | 'cargo' | 'links' | 'traffic';
+
+function ratingTone(r: number): 'ok' | 'warn' | 'danger' {
+  return r < 0.35 ? 'danger' : r < 0.6 ? 'warn' : 'ok';
+}
 
 export function registerStationPanel(host: PanelHost): void {
   host.register('station', (game: Game, host, id) => {
     const st = game.rt.stationById.get(id);
-    if (!st) return { el: h('div', null, 'Station not found'), update() {} };
-    const title = h('span', null, st.name);
-    const platforms = h('span');
-    const upgradeBtn = button(`${t('upgradePlatform')} (${fmtMoney(B.platformCost)})`, () => {
-      const r = game.cmd.upgradeStation(id);
-      if (!r.ok) game.events.emit('notify', { id: 0, day: 0, kind: 'warn', text: r.reason ?? 'cannot upgrade' });
-    }, 'btn small');
-    const renameBtn = button(t('rename'), () => promptDialog(game, 'Station name', st.name, (name) => { game.cmd.renameStation(id, name); host.refresh(); }), 'btn small');
-    const demolishBtn = button(t('demolish'), () => {
-      const r = game.cmd.removeStation(id);
-      if (!r.ok) game.events.emit('notify', { id: 0, day: 0, kind: 'warn', text: r.reason ?? 'cannot demolish' });
-      else {
-        game.select('none', -1);
-        host.close();
-      }
+    if (!st) return { el: host.frame(host.header('Station'), host.body(emptyState('This station no longer exists.'))), update() {} };
+    const mem = host.state<{ tab: Tab }>('station', () => ({ tab: 'overview' }));
+    const tabBar = h('div');
+    const content = h('div', { className: 'panel-body' });
+    const renameBtn = button(uiIcon('edit', 14), () => promptDialog(game, 'Rename station', st.name, (name) => report(game, game.cmd.renameStation(id, name)) && host.refresh()), 'btn icon small ghost', 'Rename');
+    renameBtn.setAttribute('aria-label', 'Rename station');
+    const goBtn = button(uiIcon('locate', 14), () => game.focusTile(st.tile), 'btn icon small ghost', 'Show on map');
+    goBtn.setAttribute('aria-label', 'Show on map');
+    const upgradeBtn = button([uiIcon('plus', 14), `${t('upgradePlatform')} · ${fmtMoney(B.platformCost)}`], () => report(game, game.cmd.upgradeStation(id), 'Platform added'), 'btn small primary');
+    const demolishBtn = button([uiIcon('trash', 14), t('demolish')], () => {
+      const lines = game.state.lines.filter((l) => l.stops.some((x) => x.stationId === id)).length;
+      confirmDialog(game, `Demolish ${st.name}?`, `${lines ? `${lines} line${lines === 1 ? '' : 's'} stop here; the stop is removed from them. ` : ''}Waiting cargo is lost. You get ${Math.round(B.stationDemolishRefund * 100)}% of the building cost back.`, () => {
+        if (report(game, game.cmd.removeStation(id), 'Station demolished')) {
+          game.select('none', -1);
+          host.close();
+        }
+      }, 'Demolish', true);
     }, 'btn small danger');
-    const focusBtn = button('Go to', () => game.focusTile(st.tile), 'btn small');
-    const cargoList = h('div', { className: 'list' });
-    const coverage = h('div', { className: 'list' });
-    const linesList = h('div', { className: 'list' });
-    const docked = h('div', { className: 'list' });
-    const traffic = h('div', { className: 'list' });
 
-    const el = h(
-      'div',
-      null,
-      host.header(t('station') + ': ', title),
-      row(renameBtn, focusBtn, demolishBtn),
-      kv(t('platforms'), platforms),
-      row(upgradeBtn),
-      h('h3', null, 'Coverage'),
-      coverage,
-      h('h3', null, 'Lines'),
-      linesList,
-      h('h3', null, 'Trains in station'),
-      docked,
-      h('h3', null, t('waiting')),
-      cargoList,
-      h('h3', null, 'Traffic (last month)'),
-      traffic,
-    );
+    const el = host.frame(host.header(st.name, { eyebrow: t('station'), actions: [renameBtn, goBtn] }), tabBar, content, host.foot(demolishBtn, h('span', { className: 'grow' }), upgradeBtn));
 
-    let coverageKey = '\0';
-    let linesKey = '\0';
+    const TABS: { id: Tab; label: string }[] = [
+      { id: 'overview', label: 'Overview' },
+      { id: 'cargo', label: 'Cargo' },
+      { id: 'links', label: 'Links' },
+      { id: 'traffic', label: 'Traffic' },
+    ];
+    const renderTabs = () => {
+      clear(tabBar);
+      tabBar.appendChild(
+        tabs(
+          TABS.map((x) => (x.id === 'cargo' ? { ...x, count: st.piles.length ? st.seen.filter(Boolean).length : undefined } : x)),
+          mem.tab,
+          (tid) => {
+            mem.tab = tid as Tab;
+            key = '\0';
+            renderTabs();
+            update();
+          },
+        ),
+      );
+    };
+
+    let key = '\0';
+    const render = () => {
+      const s = game.state;
+      const rt = game.rt;
+      clear(content);
+      switch (mem.tab) {
+        case 'overview': {
+          const cat = rt.catchment.get(id);
+          const lines = s.lines.filter((l) => l.stops.some((x) => x.stationId === id));
+          const docked = dockedTrains(s, id);
+          const seen = st.seen.map((v, c) => (v ? c : -1)).filter((c) => c >= 0);
+          const avgRating = seen.length ? seen.reduce((a, c) => a + st.rating[c], 0) / seen.length : -1;
+          content.append(
+            h('div', { className: 'row' }, lines.length ? badge('ok', `${lines.length} line${lines.length === 1 ? '' : 's'}`) : badge('warn', 'Not on any line'), h('span', { className: 'hint' }, lines.length ? `${docked.length} train${docked.length === 1 ? '' : 's'} in the station` : 'Add this station to a line so cargo appears here.')),
+            kpis(
+              kpi(t('platforms'), `${st.platforms} / ${B.maxPlatforms}`, { sub: 'trains at once' }),
+              kpi('Waiting', fmtInt(totalWaitingAll(st)), { sub: `of ${fmtInt(pileCap(st) * Math.max(1, seen.length))} capacity` }),
+              kpi(t('rating'), avgRating >= 0 ? fmtPct(avgRating) : '–', { tone: avgRating >= 0 && avgRating < 0.35 ? 'neg' : '', sub: 'average of served cargo' }),
+            ),
+            section(
+              'Coverage',
+              ...(cat?.towns ?? []).map((tid) => {
+                const town = rt.townById.get(tid)!;
+                return listRow({ icon: uiIcon('town', 16), title: town.name, sub: `${fmtInt(town.population)} inhabitants`, onClick: () => openEntity(game, host, 'town', tid) });
+              }),
+              ...(cat?.industries ?? []).map((iid) => {
+                const ind = rt.industryById.get(iid)!;
+                return listRow({ icon: uiIcon('industry', 16), title: ind.name, onClick: () => openEntity(game, host, 'industry', iid) });
+              }),
+              !cat || (cat.towns.length === 0 && cat.industries.length === 0) ? emptyState(`Nothing within ${B.catchmentRadius} tiles. Stations only collect from towns and industries in range.`) : null,
+            ),
+            section(
+              'Lines',
+              ...lines.map((l) => listRow({ icon: h('span', { className: 'swatch', style: { background: lineColor(l.color) } }), title: l.name, sub: `${l.stops.length} stops`, onClick: () => openEntity(game, host, 'line', l.id) })),
+              lines.length ? null : emptyState('No line stops here yet.', button('Open lines', () => host.push('lines'), 'btn small')),
+            ),
+            section(
+              'Trains in station',
+              ...docked.map((tr) => {
+                const status = trainStatus(tr, rt);
+                return listRow({ icon: uiIcon('train', 16), title: tr.name, sub: status.text, trailing: [badge(status.tone, status.short)], onClick: () => openEntity(game, host, 'train', tr.id) });
+              }),
+              docked.length ? null : h('div', { className: 'hint' }, 'None right now.'),
+            ),
+          );
+          break;
+        }
+        case 'cargo': {
+          const cap = pileCap(st);
+          const rows: HTMLElement[] = [];
+          for (let c = 0; c < CARGO_COUNT; c++) {
+            if (!st.seen[c]) continue;
+            const waiting = totalWaiting(st, c);
+            const dests = [...new Set(st.piles.filter((p) => p.cargo === c).map((p) => rt.stationById.get(p.dest)?.name ?? '?'))];
+            const r = st.rating[c];
+            rows.push(
+              h(
+                'div',
+                { className: 'cargo-row' },
+                listRow({ icon: cargoIcon(c, 16), title: CARGO[c].name, sub: dests.length ? `to ${dests.slice(0, 3).join(', ')}${dests.length > 3 ? ` +${dests.length - 3}` : ''}` : 'nothing waiting', value: `${fmtInt(waiting)} / ${cap}`, valueClass: waiting >= cap ? 'warn' : '' }),
+                h('div', { className: 'row rating-row' }, h('span', { className: 'hint' }, `${t('rating')} ${fmtPct(r)}`), h('div', { className: 'grow' }, meter(r, ratingTone(r), `Rating ${fmtPct(r)}: pickup frequency, waiting amount and train speed`))),
+              ),
+            );
+          }
+          const accepted: number[] = [];
+          for (let c = 0; c < CARGO_COUNT; c++) if (rt.acceptors[c].has(id)) accepted.push(c);
+          content.append(
+            sectionMeta(t('waiting'), `capacity ${cap} per cargo`, ...rows, rows.length ? null : emptyState('No cargo yet. Cargo appears once a line stopping here can deliver it somewhere.')),
+            section('Accepted here', accepted.length ? h('div', { className: 'row' }, ...accepted.map(cargoTag)) : h('div', { className: 'hint' }, 'Nothing in range accepts cargo.')),
+            h('div', { className: 'hint' }, 'Ratings rise with frequent pickups, short queues and fast trains. Passengers and mail leave if they wait too long.'),
+          );
+          break;
+        }
+        case 'links': {
+          const links = s.stations
+            .filter((o) => o.id !== id)
+            .map((o) => ({ st: o, hops: hopDistance(rt, id, o.id), via: nextHop(rt, id, o.id) }))
+            .filter((x) => x.hops > 0)
+            .sort((a, b) => a.hops - b.hops || a.st.name.localeCompare(b.st.name));
+          content.append(
+            sectionMeta(
+              'Reachable stations',
+              `${links.length}`,
+              ...links.map((x) => listRow({ icon: uiIcon('station', 16), title: x.st.name, sub: x.hops === 1 ? 'direct' : `${x.hops} hops, next ${rt.stationById.get(x.via)?.name ?? '?'}`, value: `${x.hops} hop${x.hops === 1 ? '' : 's'}`, onClick: () => openEntity(game, host, 'station', x.st.id) })),
+              links.length ? null : emptyState(rt.served.has(id) ? 'No other station is reachable on the line network yet.' : 'Not on any line: add this station as a stop so cargo can be routed from here.'),
+            ),
+            h('div', { className: 'hint' }, 'Cargo is routed hop by hop along lines; trains hand it over at shared stations.'),
+          );
+          break;
+        }
+        case 'traffic': {
+          const block = (title: string, up: number[], down: number[]) => {
+            const rows: HTMLElement[] = [];
+            let anyUp = 0;
+            let anyDown = 0;
+            for (let c = 0; c < CARGO_COUNT; c++) {
+              if (up[c] + down[c] <= 0) continue;
+              anyUp += up[c];
+              anyDown += down[c];
+              rows.push(listRow({ icon: cargoIcon(c, 16), title: CARGO[c].name, value: `↑ ${fmtInt(up[c])} · ↓ ${fmtInt(down[c])}` }));
+            }
+            return sectionMeta(title, rows.length ? `↑ ${fmtInt(anyUp)} picked up · ↓ ${fmtInt(anyDown)} delivered` : '', ...rows, rows.length ? null : h('div', { className: 'hint' }, 'No traffic.'));
+          };
+          content.append(block(t('thisMonth'), st.pickedUpMonth, st.deliveredMonth), block(t('lastMonth'), st.pickedUpLastMonth, st.deliveredLastMonth), h('div', { className: 'hint' }, '↑ loaded onto trains here, ↓ unloaded here (including transfers).'));
+          break;
+        }
+      }
+    };
+
     const update = () => {
       const s = game.state;
       const rt = game.rt;
-      title.textContent = st.name;
-      platforms.textContent = `${st.platforms} / ${B.maxPlatforms}`;
-      upgradeBtn.disabled = st.platforms >= B.maxPlatforms;
-      const cat = rt.catchment.get(id);
-      const ck = cat ? cat.towns.join(',') + '|' + cat.industries.join(',') : '';
-      if (ck !== coverageKey) {
-        coverageKey = ck;
-        clear(coverage);
-        if (cat) {
-          for (const tid of cat.towns) {
-            const town = rt.townById.get(tid);
-            if (town) coverage.appendChild(h('div', { className: 'item clickable', onClick: () => game.select('town', tid) }, `🏘 ${town.name}`, h('span', { className: 'muted grow' }), h('span', { className: 'muted' }, fmtInt(town.population))));
-          }
-          for (const iid of cat.industries) {
-            const ind = rt.industryById.get(iid);
-            if (ind) coverage.appendChild(h('div', { className: 'item clickable', onClick: () => game.select('industry', iid) }, `🏭 ${ind.name}`));
-          }
+      if (rt.stationById.get(id) !== st) {
+        host.close();
+        return;
+      }
+      upgradeBtn.disabled = st.platforms >= B.maxPlatforms || s.economy.money < B.platformCost;
+      upgradeBtn.title = st.platforms >= B.maxPlatforms ? 'Maximum platforms reached' : s.economy.money < B.platformCost ? 'Not enough money' : 'More platforms let more trains load at once';
+      let k = mem.tab + '|';
+      switch (mem.tab) {
+        case 'overview': {
+          const cat = rt.catchment.get(id);
+          k += `${st.platforms}|${totalWaitingAll(st)}|${st.rating.map((r) => Math.round(r * 100)).join(',')}|${cat?.towns.join(',')}|${cat?.industries.join(',')}|${s.lines.filter((l) => l.stops.some((x) => x.stationId === id)).map((l) => `${l.id}${l.name}${l.color}${l.stops.length}`).join(',')}|${dockedTrains(s, id).map((tr) => `${tr.id}${tr.state}`).join(',')}`;
+          break;
         }
-        if (!coverage.firstChild) coverage.appendChild(h('div', { className: 'muted' }, 'Nothing in range: place stations within 3 tiles of towns or industries.'));
+        case 'cargo':
+          k += st.piles.map((p) => `${p.cargo}:${p.dest}:${p.amount | 0}`).join(',') + '|' + st.rating.map((r) => Math.round(r * 100)).join(',') + '|' + st.platforms;
+          break;
+        case 'links':
+          k += s.stations.map((o) => `${o.id}${o.name}${hopDistance(rt, id, o.id)}`).join(',');
+          break;
+        case 'traffic':
+          k += [st.pickedUpMonth, st.deliveredMonth, st.pickedUpLastMonth, st.deliveredLastMonth].map((a) => a.map((v) => v | 0).join(',')).join('|');
+          break;
       }
-      const lines = s.lines.filter((l) => l.stops.some((x) => x.stationId === id));
-      const lk = lines.map((l) => l.id).join(',');
-      if (lk !== linesKey) {
-        linesKey = lk;
-        clear(linesList);
-        for (const l of lines) linesList.appendChild(h('div', { className: 'item clickable', onClick: () => game.select('line', l.id) }, h('span', { className: 'swatch', style: { background: lineColor(l.color) } }), l.name));
-        if (lines.length === 0) linesList.appendChild(h('div', { className: 'muted' }, 'No line stops here yet.'));
+      if (k !== key) {
+        key = k;
+        render();
       }
-      const dk = dockedTrains(s, id).map((tr) => `${tr.id}:${tr.state}`).join(',');
-      if (docked.dataset.key !== dk) {
-        docked.dataset.key = dk;
-        clear(docked);
-        for (const tr of dockedTrains(s, id)) docked.appendChild(h('div', { className: 'item clickable', onClick: () => game.select('train', tr.id) }, h('span', { className: 'grow' }, tr.name), h('span', { className: 'muted' }, stateText(tr.state))));
-        if (!docked.firstChild) docked.appendChild(h('div', { className: 'muted' }, 'None'));
-      }
-      clear(traffic);
-      for (let c = 0; c < CARGO_COUNT; c++) {
-        const up = st.pickedUpLastMonth[c] + st.pickedUpMonth[c];
-        const down = st.deliveredLastMonth[c] + st.deliveredMonth[c];
-        if (up + down <= 0) continue;
-        traffic.appendChild(h('div', { className: 'item' }, cargoIcon(c), h('span', { className: 'grow' }, CARGO[c].name), h('span', { className: 'muted', title: 'picked up' }, `↑ ${fmtInt(up)}`), h('span', { className: 'muted', title: 'delivered' }, `↓ ${fmtInt(down)}`)));
-      }
-      if (!traffic.firstChild) traffic.appendChild(h('div', { className: 'muted' }, 'No traffic yet'));
-      clear(cargoList);
-      const cap = pileCap(st);
-      for (let c = 0; c < CARGO_COUNT; c++) {
-        if (!st.seen[c]) continue;
-        const waiting = totalWaiting(st, c);
-        const dests = st.piles.filter((p) => p.cargo === c).map((p) => rt.stationById.get(p.dest)?.name ?? '?');
-        const uniq = [...new Set(dests)].slice(0, 3).join(', ');
-        cargoList.appendChild(
-          h(
-            'div',
-            { className: 'item' },
-            cargoIcon(c),
-            h('span', { className: 'grow' }, `${CARGO[c].name} `, h('span', { className: 'muted' }, uniq ? `→ ${uniq}` : '')),
-            h('span', { title: 'waiting / capacity' }, `${waiting}/${cap}`),
-            h('span', { className: 'bar', title: 'rating', style: { maxWidth: '50px' } }, h('div', { style: { width: fmtPct(st.rating[c]), background: st.rating[c] < 0.35 ? '#e0483f' : st.rating[c] < 0.6 ? '#f2c14e' : '#6fcf6f' } })),
-            h('span', { className: 'muted' }, fmtPct(st.rating[c])),
-          ),
-        );
-      }
-      if (!cargoList.firstChild) cargoList.appendChild(h('div', { className: 'muted' }, 'No cargo yet. Cargo appears once a line with a matching destination stops here.'));
     };
+    renderTabs();
     update();
-    void INDUSTRIES;
     return { el, update };
   });
-}
-
-import { LINE_COLORS } from '../../render/palette';
-function lineColor(i: number): string {
-  return LINE_COLORS[i % LINE_COLORS.length];
 }

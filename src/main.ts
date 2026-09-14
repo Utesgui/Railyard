@@ -18,4 +18,4 @@ game.uiUpdate = () => ui.update();
 game.start();
 
 // exposed for debugging and the Playwright smoke test
-(window as unknown as { __game: unknown }).__game = { game, get state() { return game.state; }, get rt() { return game.rt; }, cmd: game.cmd };
+(window as unknown as { __game: unknown }).__game = { game, ui, get state() { return game.state; }, get rt() { return game.rt; }, cmd: game.cmd };

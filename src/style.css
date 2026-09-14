@@ -144,7 +144,7 @@ select { padding-right: 24px; }
 #topbar .result .v.pos { color: var(--ok); }
 #topbar .result .v.neg { color: var(--danger); }
 #topbar .result .k { font-size: var(--fs-xs); color: var(--text-3); }
-#topbar .date { font-variant-numeric: tabular-nums; min-width: 96px; text-align: center; }
+#topbar .date { font-variant-numeric: tabular-nums; min-width: 96px; text-align: center; white-space: nowrap; }
 #topbar .speed { display: inline-flex; gap: 2px; }
 #topbar .speed .btn { min-width: 34px; padding: 0 6px; }
 #topbar .spacer { flex: 1; }
@@ -227,12 +227,12 @@ details.section[open] > summary::before { content: '▾'; }
 /* key / value */
 .kv { display: flex; justify-content: space-between; gap: var(--sp-3); padding: 3px 0; }
 .kv .k { color: var(--text-2); }
-.kv .v { font-variant-numeric: tabular-nums; text-align: right; }
+.kv .v { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px var(--sp-4); }
 @container hud (max-width: 640px) { .kv-grid { grid-template-columns: 1fr; } }
 
 /* KPI tiles (only for headline figures) */
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: var(--sp-2); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)); gap: var(--sp-2); }
 .kpi { background: var(--surface-3); border-radius: var(--radius); padding: 8px 10px; }
 .kpi .k { font-size: var(--fs-xs); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; }
 .kpi .v { font-size: var(--fs-lg); font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
@@ -402,3 +402,35 @@ table.tbl td.neg { color: var(--danger); }
 #topbar .count-btn { gap: 5px; }
 #topbar .count-btn .label { color: var(--text-3); }
 #topbar .btn.icon.alerts { width: 34px; min-height: 34px; }
+
+/* ============================================================================
+   Stage 4 panel pieces
+   ========================================================================== */
+.cargo-row { display: flex; flex-direction: column; gap: 2px; background: var(--surface-3); border-radius: var(--radius); }
+.cargo-row .list-row { background: transparent; }
+.cargo-row .rating-row { padding: 0 8px 6px; flex-wrap: nowrap; }
+.list-row.disabled { opacity: 0.5; cursor: not-allowed; }
+.list-row .ico { color: var(--text-2); flex: none; width: 16px; height: 16px; display: inline-flex; }
+.loco-card .name { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.loco-card .specs span + span::before { content: '·'; margin-right: 6px; color: var(--text-3); }
+.vehicle.removable { cursor: pointer; font: inherit; font-size: var(--fs-xs); line-height: 1.15; }
+.vehicle.removable:hover { outline: 2px solid var(--danger); outline-offset: 1px; }
+.vehicle.add { border: 1px dashed var(--border-strong); background: transparent; color: var(--text-3); font-size: var(--fs-lg); }
+.stop .name { background: none; border: none; color: inherit; font: inherit; font-weight: 600; text-align: left; padding: 0; }
+.route .stop + .stop { border-top: 1px solid var(--border); border-radius: 0; }
+.route .stop .ops .btn { width: 24px; min-height: 24px; }
+table.tbl tr.cur td { color: var(--text-2); }
+.field-row { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.field-row .lbl { min-width: 96px; color: var(--text-2); font-size: var(--fs-sm); }
+.field-row select, .field-row input[type='text'] { width: 100%; }
+.field-row .row { width: 100%; flex-wrap: nowrap; }
+.field-row .row input[type='text'] { flex: 1; min-width: 0; }
+label.row { gap: var(--sp-2); }
+.notif .when { display: flex; align-items: center; gap: 4px; }
+.notif > .btn { grid-row: 1 / span 2; align-self: center; }
+.panel-head .actions select { min-height: var(--control-h-sm); font-size: var(--fs-sm); padding: 2px 24px 2px 6px; }
+.section:empty { display: none; }
+.section > h3:empty { display: none; }
+input[type='search'] { width: 100%; }
+#panel.wide .kv-grid { grid-template-columns: 1fr 1fr 1fr; }
+.consist .vehicle.loco .name { font-size: var(--fs-sm); }
