@@ -8,6 +8,7 @@ import { totalMaintenance } from '../track/graph';
 import { ledgerNet, rollLedger, spend } from './economy';
 import { newVehiclesIn } from './eras';
 import { checkAchievements } from './achievements';
+import { monthEndContracts } from './contracts';
 import { monthEndIndustries, type IndustryEvent } from './industry';
 import { notify } from './notify';
 import { stepIndustriesDaily } from './industry';
@@ -87,7 +88,10 @@ export function monthEnd(state: GameState, rt: Runtime, ev: Events | null): void
   monthEndTowns(state, rt, townEvents);
   for (const e of townEvents) ev?.emit('tileChanged', e.town.tiles[e.town.tiles.length - 1]);
 
+  monthEndContracts(state, rt, ev);
   checkAchievements(state, rt, ev);
+  state.economy.cashHistory.unshift(Math.round(state.economy.money));
+  if (state.economy.cashHistory.length > 120) state.economy.cashHistory.length = 120;
 
   // bankruptcy watch
   if (state.economy.money < -B.loanMax) {

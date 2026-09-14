@@ -19,6 +19,8 @@ export interface World {
   /** 8-bit mask per tile; bit d set <=> track edge from tile toward dir d.
    *  Invariant: bit d on t <=> bit opposite(d) on neighbor(t, d). */
   track: Uint8Array;
+  /** same layout: bit set <=> that edge is double track (one lane per direction) */
+  track2: Uint8Array;
 }
 
 export interface Town {
@@ -194,6 +196,23 @@ export interface LedgerMonth {
   construction: number;
   vehicles: number;
   loanInterest: number;
+  /** contract penalties and other one-off costs */
+  other: number;
+}
+
+export interface Contract {
+  id: Id;
+  cargo: number;
+  targetKind: 'town' | 'industry';
+  targetId: Id;
+  amount: number;
+  progress: number;
+  reward: number;
+  penalty: number;
+  offeredDay: number;
+  /** offer expiry while offered; delivery deadline once accepted */
+  deadlineDay: number;
+  status: 'offered' | 'active' | 'done' | 'failed';
 }
 
 export interface Economy {
@@ -204,6 +223,8 @@ export interface Economy {
   ledger: LedgerMonth[];
   yearly: { year: number; net: number }[];
   monthsInsolvent: number;
+  /** cash at each month end, newest first, max 120 */
+  cashHistory: number[];
 }
 
 export interface Notification {
@@ -243,4 +264,5 @@ export interface GameState {
   };
   /** tutorial progress: index of the next hint to show, -1 = done */
   tutorialStep: number;
+  contracts: Contract[];
 }

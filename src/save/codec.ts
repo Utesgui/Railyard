@@ -27,7 +27,7 @@ function base64ToU8(b64: string): Uint8Array {
 export function encodeState(state: GameState, name = 'save'): string {
   const raw = {
     ...state,
-    world: { ...state.world, terrain: { __u8: u8ToBase64(state.world.terrain) }, track: { __u8: u8ToBase64(state.world.track) } },
+    world: { ...state.world, terrain: { __u8: u8ToBase64(state.world.terrain) }, track: { __u8: u8ToBase64(state.world.track) }, track2: { __u8: u8ToBase64(state.world.track2) } },
   };
   const file: SaveFile = { schema: state.schema, savedAt: new Date().toISOString(), name, state: raw };
   return JSON.stringify(file);
@@ -40,11 +40,12 @@ export function decodeState(json: string): { state: GameState; name: string; sav
   if (file.schema > SAVE_SCHEMA) throw new Error(`Save is from a newer version (schema ${file.schema})`);
   let raw = file.state as Record<string, unknown>;
   raw = migrate(raw, file.schema);
-  const world = raw.world as { width: number; height: number; terrain: { __u8: string }; track: { __u8: string } };
+  const world = raw.world as { width: number; height: number; terrain: { __u8: string }; track: { __u8: string }; track2?: { __u8: string } };
   const terrain = base64ToU8(world.terrain.__u8);
   const track = base64ToU8(world.track.__u8);
-  if (terrain.length !== world.width * world.height || track.length !== terrain.length) throw new Error('Corrupt world data');
-  const state = { ...raw, world: { ...world, terrain, track } } as unknown as GameState;
+  const track2 = world.track2 ? base64ToU8(world.track2.__u8) : new Uint8Array(terrain.length);
+  if (terrain.length !== world.width * world.height || track.length !== terrain.length || track2.length !== terrain.length) throw new Error('Corrupt world data');
+  const state = { ...raw, world: { ...world, terrain, track, track2 } } as unknown as GameState;
   state.schema = SAVE_SCHEMA;
   // defaults for fields added within the current schema
   (state.stats as { byCargo?: number[] }).byCargo ??= new Array(12).fill(0);

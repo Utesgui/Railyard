@@ -12,6 +12,7 @@ import { fmtInt, fmtMoney, fmtMoneyShort, fmtPct, fmtSpeed } from '../format';
 import { barChart } from '../chart';
 import { monthLabels } from './stats';
 import { trainAgeYears } from '../../sim/train/step';
+import { consistPerformance } from '../../sim/train/performance';
 import { t } from '../../i18n/t';
 import { cargoIcon, classCargo } from '../icons';
 import type { PanelHost } from './PanelHost';
@@ -36,6 +37,7 @@ export function registerTrainPanels(host: PanelHost): void {
     const deliveredEl = h('span');
     const distanceEl = h('span');
     const loadFactorEl = h('span');
+    const perfEl = h('div', { className: 'muted', style: { fontSize: '12px' } });
     const chartWrap = h('div');
     const consist = h('div', { className: 'wagon-row' });
     const cargoList = h('div', { className: 'list' });
@@ -70,6 +72,7 @@ export function registerTrainPanels(host: PanelHost): void {
       kv('Reliability', relEl),
       h('h3', null, 'Consist'),
       consist,
+      perfEl,
       cargoList,
       h('h3', null, 'Control'),
       row(stopBtn, resumeBtn, refitBtn),
@@ -123,6 +126,10 @@ export function registerTrainPanels(host: PanelHost): void {
       const ck = `${train.loco}|` + train.wagons.map((w) => `${w.spec}:${w.cargo}:${w.amount}`).join(',');
       if (ck !== consistKey) {
         consistKey = ck;
+        const perf = consistPerformance(train.loco, train.wagons.map((w) => w.spec));
+        perfEl.textContent = `Loaded: ${Math.round(perf.loadedMass)} t · top speed ${fmtSpeed(perf.loadedTopSpeed)} of ${fmtSpeed(perf.speedLimit)} · ${perf.powerToWeight.toFixed(1)} kW/t · ${perf.ratingText}`;
+        perfEl.className = perf.rating === 'weak' ? 'warn' : 'muted';
+        perfEl.style.fontSize = '12px';
         clear(consist);
         const loco = LOCOS[train.loco];
         consist.appendChild(h('div', { className: 'wagon loco', style: { background: loco.color }, title: loco.name }, loco.name.split(' ')[0]));
@@ -249,7 +256,16 @@ export function registerTrainPanels(host: PanelHost): void {
       totals.appendChild(kv(t('running'), fmtMoney(run) + '/mo'));
       totals.appendChild(kv(t('capacity'), `${cap} units · ${chosen.length} wagons`));
       totals.appendChild(kv(t('maxSpeed'), fmtSpeed(limit)));
-      totals.appendChild(kv('Empty mass', `${Math.round(tare)} t`));
+      void tare;
+      if (loco) {
+        const perf = consistPerformance(selectedLoco, chosen);
+        totals.appendChild(kv('Mass empty / loaded', `${Math.round(perf.emptyMass)} t / ${Math.round(perf.loadedMass)} t`));
+        totals.appendChild(kv('Top speed loaded', `${fmtSpeed(perf.loadedTopSpeed)} (${Math.round((perf.loadedTopSpeed / Math.max(1, perf.speedLimit)) * 100)}%)`));
+        totals.appendChild(kv('0 → top speed', `${perf.accelDays.toFixed(1)} days`));
+        totals.appendChild(kv('Power / weight', `${perf.powerToWeight.toFixed(1)} kW/t`));
+        const ratingEl = h('div', { className: perf.rating === 'strong' ? 'good' : perf.rating === 'ok' ? '' : 'warn', style: { marginTop: '4px' } }, (perf.rating === 'strong' ? '● ' : perf.rating === 'ok' ? '◐ ' : '○ ') + perf.ratingText);
+        totals.appendChild(ratingEl);
+      }
       buyBtn.disabled = selectedLoco < 0 || (!refitTrain && lineId < 0);
     };
     renderWagonBtns();

@@ -7,7 +7,7 @@ import { addEdge } from './graph';
 import { RouteCache, findRoute } from './routing';
 
 function world(w = 20, h = 20): World {
-  return { seed: 0, width: w, height: h, terrain: new Uint8Array(w * h).fill(Terrain.Grass), track: new Uint8Array(w * h) };
+  return { seed: 0, width: w, height: h, terrain: new Uint8Array(w * h).fill(Terrain.Grass), track: new Uint8Array(w * h), track2: new Uint8Array(w * h) };
 }
 
 function maxTurn(path: number[], w: number): number {

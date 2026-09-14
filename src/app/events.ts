@@ -18,6 +18,10 @@ export interface EventMap {
   floater: { tile: number; text: string; color: string };
   achievement: string;
   gameOver: void;
+  /** a train left a station (tile) */
+  depart: number;
+  /** contract offered / completed / failed */
+  contract: { id: number; status: string };
 }
 
 type Handler<T> = (payload: T) => void;

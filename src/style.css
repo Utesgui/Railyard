@@ -18,6 +18,7 @@ html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: 
 #map.tool-station { cursor: cell; }
 #map.tool-demolish { cursor: not-allowed; }
 #map.tool-line { cursor: pointer; }
+#map.tool-upgrade { cursor: copy; }
 #map.panning { cursor: grabbing; }
 #hud { position: absolute; inset: 0; pointer-events: none; }
 #hud > * { pointer-events: auto; }

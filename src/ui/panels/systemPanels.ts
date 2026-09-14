@@ -1,5 +1,6 @@
 import type { Game } from '../../app/Game';
 import { seedFromString } from '../../core/rng';
+import { MAP_SIZES, type MapSizeKey } from '../../world/gen/generate';
 import { formatMonth } from '../../core/time';
 import { B } from '../../data/balance';
 import { CARGO } from '../../data/cargo';
@@ -7,11 +8,12 @@ import { ledgerNet, ledgerTotalCosts, ledgerTotalRevenue } from '../../sim/econo
 import { SLOTS, deleteSlot, exportToFile, getSetting, importFromFile, loadFromSlot, saveToSlot, setSetting, slotInfo } from '../../save/storage';
 import { button, clear, h, kv, row } from '../dom';
 import { fmtMoney, fmtMoneyShort } from '../format';
-import { barChart } from '../chart';
+import { barChart, lineChart } from '../chart';
 import { monthLabels } from './stats';
 import { t } from '../../i18n/t';
 import { showAchievements } from '../dialogs';
 import { ACHIEVEMENTS } from '../../sim/achievements';
+import { sfx } from '../sfx';
 import { cargoIcon } from '../icons';
 import type { PanelHost } from './PanelHost';
 
@@ -29,10 +31,13 @@ export function registerSystemPanels(host: PanelHost): void {
     const lines = h('div', { className: 'list' });
     const cargoRev = h('div', { className: 'list' });
     const chartWrap = h('div');
+    const cashWrap = h('div');
     const el = h(
       'div',
       null,
       host.header(t('toolFinances')),
+      h('h3', null, 'Cash, last 36 months'),
+      cashWrap,
       kv(t('money'), money),
       kv('Loan', loan),
       row(
@@ -53,6 +58,13 @@ export function registerSystemPanels(host: PanelHost): void {
       const s = game.state;
       money.textContent = fmtMoney(s.economy.money);
       loan.textContent = fmtMoney(s.economy.loan);
+      const cash = s.economy.cashHistory.slice(0, 36);
+      const cashKey = cash.join(',');
+      if (cashWrap.dataset.key !== cashKey) {
+        cashWrap.dataset.key = cashKey;
+        clear(cashWrap);
+        cashWrap.appendChild(lineChart([...cash].reverse(), { format: fmtMoneyShort, labels: monthLabels(s, cash.length), emptyText: 'Cash history builds up month by month' }));
+      }
       const hist = s.economy.ledger.slice(1, 13).map(ledgerNet);
       const hk = hist.join(',');
       if (chartWrap.dataset.key !== hk) {
@@ -72,10 +84,15 @@ export function registerSystemPanels(host: PanelHost): void {
         if (v > 0) cargoRev.appendChild(h('div', { className: 'item' }, cargoIcon(c), h('span', { className: 'grow' }, CARGO[c].name), fmtMoney(v)));
       });
       if (!cargoRev.firstChild) cargoRev.appendChild(h('div', { className: 'muted' }, 'No revenue yet this month'));
-      clear(lines);
-      for (const l of s.lines) {
-        const net = l.revenueLastMonth - l.costLastMonth;
-        lines.appendChild(h('div', { className: 'item clickable', onClick: () => game.select('line', l.id) }, h('span', { className: 'grow' }, l.name), h('span', { className: net >= 0 ? 'good' : 'warn' }, fmtMoney(net))));
+      const lk = s.lines.map((l) => `${l.id}:${l.name}:${l.revenueLastMonth - l.costLastMonth}`).join('|');
+      if (lines.dataset.key !== lk) {
+        lines.dataset.key = lk;
+        clear(lines);
+        for (const l of s.lines) {
+          const net = l.revenueLastMonth - l.costLastMonth;
+          lines.appendChild(h('div', { className: 'item clickable', onClick: () => game.select('line', l.id) }, h('span', { className: 'grow' }, l.name), h('span', { className: net >= 0 ? 'good' : 'warn' }, fmtMoney(net))));
+        }
+        if (!s.lines.length) lines.appendChild(h('div', { className: 'muted' }, 'No lines yet'));
       }
     };
     update();
@@ -89,6 +106,12 @@ export function registerSystemPanels(host: PanelHost): void {
       const opt = h('option', { value: String(v) }, label);
       if (v === getSetting<number>('startMoney', 500_000)) opt.selected = true;
       moneySel.appendChild(opt);
+    }
+    const sizeSel = h('select');
+    for (const key of Object.keys(MAP_SIZES) as MapSizeKey[]) {
+      const opt = h('option', { value: key }, MAP_SIZES[key].name);
+      if (key === getSetting<MapSizeKey>('mapSize', 'medium')) opt.selected = true;
+      sizeSel.appendChild(opt);
     }
     const scaleSel = h('select', { onChange: () => { setSetting('uiScale', Number(scaleSel.value)); applyUiScale(Number(scaleSel.value)); } });
     for (const v of [0.8, 0.9, 1, 1.1, 1.25, 1.5]) {
@@ -132,6 +155,8 @@ export function registerSystemPanels(host: PanelHost): void {
       importFromFile(f).then((s) => game.loadState(s)).catch((e) => game.events.emit('notify', { day: 0, kind: 'warn', text: `Import failed: ${(e as Error).message}` }));
       importInput.value = '';
     } });
+    const volume = h('input', { type: 'range', min: '0', max: '100', step: '5', value: String(Math.round(sfx.volume * 100)), onInput: () => { sfx.ensure(); sfx.setVolume(Number(volume.value) / 100); sfx.play('click'); } });
+    volume.id = 'volume';
     const catchToggle = h('input', { type: 'checkbox', checked: game.ui.showCatchment, onChange: () => (game.ui.showCatchment = catchToggle.checked) });
     const linesToggle = h('input', { type: 'checkbox', checked: game.ui.showLines, onChange: () => (game.ui.showLines = linesToggle.checked) });
     const el = h(
@@ -141,11 +166,13 @@ export function registerSystemPanels(host: PanelHost): void {
       h('h3', null, t('newGame')),
       row(h('span', { className: 'muted' }, t('seed') + ' '), seedInput, button('Random', () => (seedInput.value = String((Math.random() * 0xffffffff) >>> 0)), 'btn small')),
       row(h('span', { className: 'muted' }, 'Start money '), moneySel),
+      row(h('span', { className: 'muted' }, 'Map size '), sizeSel),
       row(
         button(t('newGame'), () => {
           if (!confirm('Start a new game? Unsaved progress is lost.')) return;
           setSetting('startMoney', Number(moneySel.value));
-          game.newGame(seedFromString(seedInput.value || '1'), Number(moneySel.value));
+          setSetting('mapSize', sizeSel.value);
+          game.newGame(seedFromString(seedInput.value || '1'), Number(moneySel.value), sizeSel.value as MapSizeKey);
           host.close();
         }, 'btn primary'),
       ),
@@ -156,12 +183,14 @@ export function registerSystemPanels(host: PanelHost): void {
       row(h('span', { className: 'muted' }, t('autosave') + ' '), autosaveSel),
       h('h3', null, 'Progress'),
       row(button(`Achievements (${game.state.achievements.length}/${ACHIEVEMENTS.length})`, () => showAchievements(game), 'btn small'), button('Show tutorial again', () => { game.state.tutorialStep = 0; }, 'btn small')),
+      h('h3', null, 'Sound'),
+      row(h('label', { attrs: { for: 'volume' }, className: 'muted' }, 'Volume '), volume),
       h('h3', null, 'Display'),
       row(h('span', { className: 'muted' }, 'UI size '), scaleSel),
       row(h('label', null, catchToggle, ' Show station coverage')),
       row(h('label', null, linesToggle, ' Show lines on map')),
       h('h3', null, 'Keys'),
-      h('div', { className: 'muted', html: 'Space pause · 1–4 speed · T track · S station · X demolish · L lines · V vehicles · F finances · O settings<br>Arrow keys pan · wheel zoom · right-drag pan · Esc cancel · Shift+click keeps building track' }),
+      h('div', { className: 'muted', html: 'Space pause · 1–4 speed · T track · S station · X demolish · U double track · L lines · V vehicles · F finances · C contracts · O settings · H coverage<br>Arrow keys pan · wheel zoom · right-drag pan · middle-click waypoint · Esc cancel · Shift+click keeps building track' }),
     );
     return { el, update() {} };
   });

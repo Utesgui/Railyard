@@ -15,12 +15,14 @@ export function createToolbar(game: Game, panels: PanelHost): Toolbar {
     ['track', t('toolTrack'), 'T'],
     ['station', t('toolStation'), 'S'],
     ['demolish', t('toolDemolish'), 'X'],
+    ['upgrade', 'Double track', 'U'],
   ];
   const toolBtns = tools.map(([name, label, key]) => h('button', { className: 'btn', onClick: () => game.setTool(name) }, label, h('kbd', null, key)));
   const panelsList: [string, string, string][] = [
     ['lines', t('toolLines'), 'L'],
     ['depot', t('toolVehicles'), 'V'],
     ['finances', t('toolFinances'), 'F'],
+    ['contracts', 'Contracts', 'C'],
     ['settings', t('toolSettings'), 'O'],
   ];
   const panelBtns = panelsList.map(([name, label, key]) =>

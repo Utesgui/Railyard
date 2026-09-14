@@ -165,6 +165,25 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, cam: Camera, state: G
     }
   }
 
+  // double-track upgrade preview: highlight the whole segment
+  if (ui.tool === 'upgrade' && ui.upgradeHover) {
+    const hv = ui.upgradeHover;
+    ctx.strokeStyle = hv.count > 0 ? 'rgba(79,176,255,0.9)' : 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 9;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const e of hv.edges) {
+      const t = e >> 2;
+      const d = e & 3;
+      const [x, y] = center(t, w);
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + DIR_DX[d] * TILE_PX, y + DIR_DY[d] * TILE_PX);
+    }
+    ctx.stroke();
+    const [hx, hy] = center(hv.t, w);
+    label(ctx, z, hv.count > 0 ? `Double track: ${fmtMoney(hv.cost)} (${hv.count} edges)` : 'Already double track', hx, hy - 18, hv.count > 0 ? '#fff' : '#ccc');
+  }
+
   // selection highlights
   const sel = ui.selection;
   ctx.lineWidth = 2 / z;

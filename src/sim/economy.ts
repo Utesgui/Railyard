@@ -3,7 +3,7 @@ import { newLedgerMonth } from '../core/factory';
 import { B } from '../data/balance';
 import { CARGO } from '../data/cargo';
 
-export type CostCategory = 'trainRunning' | 'trackMaint' | 'stationMaint' | 'construction' | 'vehicles' | 'loanInterest';
+export type CostCategory = 'trainRunning' | 'trackMaint' | 'stationMaint' | 'construction' | 'vehicles' | 'loanInterest' | 'other';
 
 export function ledgerNow(state: GameState): LedgerMonth {
   return state.economy.ledger[0];
@@ -41,7 +41,7 @@ export function ledgerTotalRevenue(l: LedgerMonth): number {
 }
 
 export function ledgerTotalCosts(l: LedgerMonth): number {
-  return l.trainRunning + l.trackMaint + l.stationMaint + l.construction + l.vehicles + l.loanInterest;
+  return l.trainRunning + l.trackMaint + l.stationMaint + l.construction + l.vehicles + l.loanInterest + (l.other ?? 0);
 }
 
 export function ledgerNet(l: LedgerMonth): number {

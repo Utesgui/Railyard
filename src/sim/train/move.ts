@@ -1,5 +1,6 @@
 import type { Events } from '../../app/events';
-import { claimEdge, pathEdgeId, releaseEdge, trainSegDir, type Runtime } from '../../app/runtime';
+import { claimEdge, edgeOwnerOf, pathEdgeForward, pathEdgeId, releaseEdge, trainSegDir, type Runtime } from '../../app/runtime';
+import { isDoubleEdgeId } from '../../track/graph';
 import { NONE } from '../../core/constants';
 import { TrainState, type GameState, type Train } from '../../core/types';
 import { B } from '../../data/balance';
@@ -65,9 +66,10 @@ export function stepMoving(state: GameState, rt: Runtime, train: Train, ev: Even
       const d = cum[i] - train.pathPos;
       if (d > look) break;
       const e = pathEdgeId(path, i, w);
-      const owner = rt.edgeOwner[e];
+      const fwd = pathEdgeForward(path, i, w);
+      const owner = edgeOwnerOf(rt, state.world, e, fwd);
       let blocked = owner !== -1 && owner !== train.id;
-      if (!blocked) {
+      if (!blocked && !isDoubleEdgeId(state.world, e)) {
         const g = rt.segments.edgeSeg[e];
         if (g >= 0 && rt.segCount[g] > 0 && rt.segDir[g] !== trainSegDir(rt, path, i, w)) blocked = true;
       }
@@ -106,12 +108,12 @@ export function stepMoving(state: GameState, rt: Runtime, train: Train, ev: Even
   // claim edges the head has entered
   while (train.headEdge + 1 <= last - 1 && cum[train.headEdge + 1] <= train.pathPos) {
     train.headEdge++;
-    claimEdge(rt, pathEdgeId(path, train.headEdge, w), train.id, trainSegDir(rt, path, train.headEdge, w));
+    claimEdge(rt, state.world, pathEdgeId(path, train.headEdge, w), pathEdgeForward(path, train.headEdge, w), train.id, trainSegDir(rt, path, train.headEdge, w));
   }
   // release edges the tail has left
   const tailPos = train.pathPos - L;
   while (train.tailEdge < train.headEdge && cum[train.tailEdge + 1] <= tailPos) {
-    releaseEdge(rt, pathEdgeId(path, train.tailEdge, w), train.id);
+    releaseEdge(rt, state.world, pathEdgeId(path, train.tailEdge, w), pathEdgeForward(path, train.tailEdge, w), train.id);
     train.tailEdge++;
   }
   if (ghost && train.headEdge >= train.ghostUntilEdge) train.ghostUntilEdge = NONE;

@@ -15,6 +15,9 @@ export const B = {
   demolishRefund: 0.25,
   trackMaintPerEdgeMonth: 8,
   trackMaintSpecialMult: 5, // bridge / tunnel
+  doubleTrackCostMult: 0.8, // upgrade cost relative to building the edge
+  doubleTrackMaintMult: 1.8,
+  doubleLaneOffsetPx: 4.5,
 
   // --- stations ---
   stationCost: 15_000, // includes 2 platforms

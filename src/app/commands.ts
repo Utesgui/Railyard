@@ -6,14 +6,15 @@ import { TrainState, type Dir, type GameState, type Id, type Line, type LineStop
 import { B } from '../data/balance';
 import { LOCOS, WAGONS, locosAvailable, wagonsAvailable } from '../data/vehicles';
 import { repayLoan, spend, takeLoan } from '../sim/economy';
+import { acceptContract, declineContract } from '../sim/contracts';
 import { notify } from '../sim/notify';
 import { consistInfo } from '../sim/train/consist';
 import { placeInStation, releasePlatform, startDwellAt } from '../sim/train/dwell';
-import { addEdge, canAddEdge, edgeBuildCost, hasEdge, removeEdge as removeEdgeRaw } from '../track/graph';
+import { addEdge, canAddEdge, doubleUpgradeCost, edgeBuildCost, hasEdge, isDouble, removeEdge as removeEdgeRaw, setDouble } from '../track/graph';
 import { priceRoute } from '../track/buildRoute';
 import { isSpecialTerrain, Occ, isBuildable } from '../world/terrain';
 import type { Events } from './events';
-import { pathEdgeId, rebuildAll, rebuildCatchments, rebuildIndexes, rebuildSegments, rebuildStationSlots, rebuildTileOcc, releaseAllEdges, type Runtime } from './runtime';
+import { edgeBusy, pathEdgeId, rebuildAll, rebuildCatchments, rebuildIndexes, rebuildLocks, rebuildSegments, rebuildStationSlots, rebuildTileOcc, releaseAllEdges, type Runtime } from './runtime';
 import { rebuildNetwork } from '../sim/cargoRouting';
 
 export interface CmdResult {
@@ -107,7 +108,7 @@ export class Commands {
     // any train using one of these edges (now or ahead on its path)?
     for (const [et, ed] of edges) {
       const e = edgeIdOf(et, ed, w);
-      if (this.rt.edgeOwner[e] >= 0) return fail('a train is in the way');
+      if (edgeBusy(this.rt, e)) return fail('a train is in the way');
       const n = neighbor(et, ed, w, world.height);
       for (const train of s.trains) {
         if (train.state !== TrainState.Moving && train.state !== TrainState.Broken) continue;
@@ -120,11 +121,53 @@ export class Commands {
     }
     let refund = 0;
     for (const [et, ed] of edges) {
-      refund += edgeBuildCost(world, et, ed) * B.demolishRefund;
+      refund += (edgeBuildCost(world, et, ed) + (isDouble(world, et, ed) ? doubleUpgradeCost(world, et, ed) : 0)) * B.demolishRefund;
       removeEdgeRaw(world, et, ed);
     }
     spend(s, -Math.round(refund), 'construction');
     this.afterTrackChanged();
+    return ok();
+  }
+
+  /** Canonical edge ids of the segment (junction to junction) that contains edge t->d. */
+  segmentEdges(t: number, d: Dir): number[] {
+    const w = this.state.world.width;
+    const e0 = edgeIdOf(t, d, w);
+    const g = this.rt.segments.edgeSeg[e0];
+    if (g < 0) return [e0];
+    const out: number[] = [];
+    const seg = this.rt.segments.edgeSeg;
+    for (let e = 0; e < seg.length; e++) if (seg[e] === g) out.push(e);
+    return out;
+  }
+
+  /** Upgrade cost for the not-yet-double edges of a segment. */
+  segmentUpgradeCost(edges: number[]): { cost: number; count: number } {
+    const world = this.state.world;
+    let cost = 0;
+    let count = 0;
+    for (const e of edges) {
+      const et = e >> 2;
+      const ed = (e & 3) as Dir;
+      if (isDouble(world, et, ed)) continue;
+      cost += doubleUpgradeCost(world, et, ed);
+      count++;
+    }
+    return { cost, count };
+  }
+
+  /** Make every edge of the segment containing t->d double track. */
+  upgradeSegment(t: number, d: Dir): CmdResult {
+    const s = this.state;
+    if (!hasEdge(s.world, t, d)) return fail('no track');
+    const edges = this.segmentEdges(t, d);
+    const { cost, count } = this.segmentUpgradeCost(edges);
+    if (count === 0) return fail('already double track');
+    if (s.economy.money < cost) return fail('not enough money');
+    for (const e of edges) setDouble(s.world, e >> 2, (e & 3) as Dir, true);
+    spend(s, cost, 'construction');
+    rebuildLocks(s, this.rt); // lanes changed: re-derive ownership from train positions
+    this.ev.emit('trackChanged');
     return ok();
   }
 
@@ -385,7 +428,7 @@ export class Commands {
     const train = this.rt.trainById.get(id);
     if (!train) return fail('no train');
     const value = consistInfo(train).value;
-    releaseAllEdges(this.rt, train, s.world.width);
+    releaseAllEdges(this.rt, train, s.world);
     releasePlatform(this.rt, train);
     s.trains.splice(s.trains.indexOf(train), 1);
     this.rt.trainById.delete(id);
@@ -478,6 +521,16 @@ export class Commands {
 
   repayLoan(amount = B.loanStep): CmdResult {
     return repayLoan(this.state, amount) ? ok() : fail('cannot repay');
+  }
+
+  // ------------------------------------------------------------------ contracts
+
+  acceptContract(id: Id): CmdResult {
+    return acceptContract(this.state, id) ? ok(id) : fail('no such offer');
+  }
+
+  declineContract(id: Id): CmdResult {
+    return declineContract(this.state, id) ? ok(id) : fail('no such offer');
   }
 
   // ------------------------------------------------------------------ misc

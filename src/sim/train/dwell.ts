@@ -1,5 +1,6 @@
 import type { Events } from '../../app/events';
-import { claimEdge, ensureStationSlots, pathEdgeId, releaseAllEdges, trainSegDir, type Runtime } from '../../app/runtime';
+import { claimEdge, edgeOwnerOf, ensureStationSlots, pathEdgeForward, pathEdgeId, releaseAllEdges, trainSegDir, type Runtime } from '../../app/runtime';
+import { isDoubleEdgeId } from '../../track/graph';
 import { NONE } from '../../core/constants';
 import { dirBetween, octileT } from '../../core/grid';
 import { tickToDay } from '../../core/time';
@@ -10,6 +11,7 @@ import { WAGONS } from '../../data/vehicles';
 import { nextHop } from '../cargoRouting';
 import { deliveryRevenue, earn } from '../economy';
 import { deliverToIndustry } from '../industry';
+import { contractDelivery } from '../contracts';
 import { notify } from '../notify';
 import { addToPile, takeFromPile } from '../station';
 import { consistInfo, trainCapacity, trainLoad } from './consist';
@@ -85,7 +87,7 @@ export function beginDwell(state: GameState, rt: Runtime, train: Train, ev: Even
   const last = path.length - 1;
   const stationId = last >= 0 ? rt.stationAt[path[last]] : -1;
   const station = stationId >= 0 ? rt.stationById.get(stationId) : undefined;
-  releaseAllEdges(rt, train, w);
+  releaseAllEdges(rt, train, state.world);
   if (last >= 1) train.boxDir = dirBetween(path[last - 1], path[last], w);
   train.speed = 0;
   train.blockedTicks = 0;
@@ -209,9 +211,10 @@ export function departTrain(state: GameState, rt: Runtime, train: Train, ev: Eve
   if (!forced) {
     for (let i = 0; i <= k; i++) {
       const e = pathEdgeId(path, i, w);
-      const owner = rt.edgeOwner[e];
+      const fwd = pathEdgeForward(path, i, w);
+      const owner = edgeOwnerOf(rt, state.world, e, fwd);
       let blocked = owner !== -1 && owner !== train.id;
-      if (!blocked) {
+      if (!blocked && !isDoubleEdgeId(state.world, e)) {
         const g = rt.segments.edgeSeg[e];
         if (g >= 0 && rt.segCount[g] > 0 && rt.segDir[g] !== trainSegDir(rt, path, i, w)) blocked = true;
       }
@@ -228,11 +231,12 @@ export function departTrain(state: GameState, rt: Runtime, train: Train, ev: Eve
   train.prevPathPos = start;
   train.headEdge = k;
   train.tailEdge = 0;
-  for (let i = 0; i <= k; i++) claimEdge(rt, pathEdgeId(path, i, w), train.id, trainSegDir(rt, path, i, w));
+  for (let i = 0; i <= k; i++) claimEdge(rt, state.world, pathEdgeId(path, i, w), pathEdgeForward(path, i, w), train.id, trainSegDir(rt, path, i, w));
   train.state = TrainState.Moving;
   train.speed = 0;
   train.blockedTicks = 0;
   train.boxDir = dirBetween(path[0], path[1], w);
+  ev?.emit('depart', from.tile);
   const cap = trainCapacity(train);
   if (cap > 0) {
     train.loadSum += trainLoad(train) / cap;
@@ -290,6 +294,7 @@ function exchangeCargo(state: GameState, rt: Runtime, train: Train, line: Line, 
         train.profitMonth += rev;
         line.revenueMonth += rev;
         consume(state, rt, station, wg.cargo, wg.amount);
+        contractDelivery(state, rt, ev, station, wg.cargo, wg.amount);
         station.deliveredMonth[wg.cargo] += wg.amount;
         line.cargoMonth[wg.cargo] += wg.amount;
         train.deliveredTotal += wg.amount;

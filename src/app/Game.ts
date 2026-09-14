@@ -1,4 +1,5 @@
 import { MAP_H, MAP_W } from '../core/constants';
+import { MAP_SIZES, type MapSizeKey } from '../world/gen/generate';
 import type { GameState } from '../core/types';
 import { Camera } from '../render/camera';
 import { Minimap } from '../render/minimap';
@@ -19,9 +20,10 @@ export class Game {
   state!: GameState;
   rt!: Runtime;
   readonly events = new Events();
-  readonly cam: Camera;
-  readonly renderer: Renderer;
-  readonly minimap: Minimap;
+  cam: Camera;
+  renderer: Renderer;
+  minimap: Minimap;
+  private readonly minimapCanvas: HTMLCanvasElement;
   readonly ui: UIState = newUIState();
   readonly cmd: Commands;
   readonly loop: Loop;
@@ -34,6 +36,7 @@ export class Game {
     readonly canvas: HTMLCanvasElement,
     minimapCanvas: HTMLCanvasElement,
   ) {
+    this.minimapCanvas = minimapCanvas;
     this.cam = new Camera(MAP_W, MAP_H);
     this.renderer = new Renderer(canvas, this.cam, MAP_W, MAP_H);
     this.minimap = new Minimap(minimapCanvas, MAP_W, MAP_H);
@@ -49,14 +52,15 @@ export class Game {
       this.minimap.invalidate();
     });
     this.events.on('month', () => this.maybeAutosave());
-    this.events.on('floater', (f) => this.floaters.add(f.tile, MAP_W, f.text, f.color));
+    this.events.on('floater', (f) => this.floaters.add(f.tile, this.state.world.width, f.text, f.color));
     window.addEventListener('resize', () => this.renderer.resize());
   }
 
-  newGame(seed: number, startMoney?: number): void {
-    this.setState(generateWorld(seed, { startMoney }));
+  newGame(seed: number, startMoney?: number, size: MapSizeKey = 'medium'): void {
+    const dims = MAP_SIZES[size] ?? MAP_SIZES.medium;
+    this.setState(generateWorld(seed, { startMoney, width: dims.w, height: dims.h }));
     const town = this.state.towns[0];
-    if (town) this.cam.centerOnTile(town.y * MAP_W + town.x);
+    if (town) this.cam.centerOnTile(town.y * this.state.world.width + town.x);
     notify(this.state, this.events, 'info', `Welcome to Railyard. Seed ${seed}. Build track (T), place stations (S), create a line (L) and buy a train (V).`, undefined, false);
   }
 
@@ -65,12 +69,22 @@ export class Game {
     const st = this.state.stations[0] ?? null;
     const town = this.state.towns[0];
     if (st) this.cam.centerOnTile(st.tile);
-    else if (town) this.cam.centerOnTile(town.y * MAP_W + town.x);
+    else if (town) this.cam.centerOnTile(town.y * this.state.world.width + town.x);
   }
 
   private setState(state: GameState): void {
     this.state = state;
     this.rt = createRuntime(state);
+    const w = state.world.width;
+    const h = state.world.height;
+    if (this.cam.mapW !== w || this.cam.mapH !== h) {
+      // map size changed: rebuild the view objects for the new dimensions
+      this.cam = new Camera(w, h);
+      this.renderer = new Renderer(this.canvas, this.cam, w, h);
+      this.minimap = new Minimap(this.minimapCanvas, w, h);
+    }
+    this.minimapCanvas.style.width = '192px';
+    this.minimapCanvas.style.height = `${Math.round((192 * h) / w)}px`;
     this.renderer.resize();
     this.renderer.staticLayer.markAllDirty();
     this.minimap.invalidate();
@@ -112,6 +126,7 @@ export class Game {
     this.ui.stationHover = -1;
     this.ui.demolishEdge = null;
     this.ui.demolishStation = -1;
+    this.ui.upgradeHover = null;
     if (tool !== 'line') this.ui.editingLine = -1;
     this.events.emit('toolChanged', tool);
   }

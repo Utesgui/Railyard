@@ -169,3 +169,56 @@ describe('headless game', () => {
     expect(train.state).not.toBe(TrainState.NoRoute);
   });
 });
+
+describe('double track', () => {
+  it('lets two trains travel head-on on an upgraded segment', () => {
+    const { state, rt, events, cmd } = setup(4242);
+    const ta = state.towns[0];
+    const tb = state.towns
+      .slice(1)
+      .map((t) => ({ t, d: Math.hypot(t.x - ta.x, t.y - ta.y) }))
+      .sort((a, b) => a.d - b.d)[0].t;
+    const sa = freeTileNear(state, rt.tileOcc, ta.x, ta.y);
+    const sb = freeTileNear(state, rt.tileOcc, tb.x, tb.y);
+    const a = cmd.placeStation(sa).id!;
+    const b = cmd.placeStation(sb).id!;
+    const pv = buildRoute(state.world, rt.tileOcc, sa, sb, rt.astar);
+    expect(cmd.buildTrack(pv.nodes).ok).toBe(true);
+    const l1 = cmd.createLine('AB').id!;
+    cmd.addStop(l1, a);
+    cmd.addStop(l1, b);
+    const l2 = cmd.createLine('BA').id!;
+    cmd.addStop(l2, b);
+    cmd.addStop(l2, a);
+    const run = (ticks: number) => {
+      let both = 0;
+      for (let i = 0; i < ticks; i++) {
+        tick(state, rt, events);
+        const moving = state.trains.filter((t) => t.state === TrainState.Moving && t.pathPos > 1);
+        if (moving.length === 2) both++;
+      }
+      return both;
+    };
+    // single track: the second train has to wait for the first to clear the segment
+    const t1 = cmd.buyTrain(l1, 0, [0]).id!;
+    const t2 = cmd.buyTrain(l2, 0, [0]).id!;
+    expect(run(90)).toBe(0);
+    // upgrade the whole segment between the two stations
+    const w = state.world.width;
+    const mid = pv.nodes[Math.floor(pv.nodes.length / 2)];
+    const next = pv.nodes[Math.floor(pv.nodes.length / 2) + 1];
+    const dx = (next % w) - (mid % w);
+    const dy = ((next / w) | 0) - ((mid / w) | 0);
+    const dir = [1, 0, 1, 1, 0, 1, -1, 1, -1, 0, -1, -1, 0, -1, 1, -1].findIndex((_, i, arr) => i % 2 === 0 && arr[i] === dx && arr[i + 1] === dy) / 2;
+    const before = state.economy.money;
+    expect(cmd.upgradeSegment(mid, dir as 0).ok).toBe(true);
+    expect(state.economy.money).toBeLessThan(before);
+    expect(cmd.upgradeSegment(mid, dir as 0).ok).toBe(false); // already double
+    // now both trains can be under way at the same time
+    for (let i = 0; i < 4 * 30 * 30; i++) tick(state, rt, events);
+    expect(run(6 * 30 * 30)).toBeGreaterThan(0);
+    expect(rt.trainById.get(t1)!.state).not.toBe(TrainState.NoRoute);
+    expect(rt.trainById.get(t2)!.state).not.toBe(TrainState.NoRoute);
+    for (let g = 0; g < rt.segments.segmentCount; g++) expect(rt.segCount[g]).toBeGreaterThanOrEqual(0);
+  });
+});

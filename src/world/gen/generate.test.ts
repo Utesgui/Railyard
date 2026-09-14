@@ -57,6 +57,17 @@ describe('generateWorld', () => {
     }
   });
 
+  it('scales towns and industries with the map size', () => {
+    const small = generateWorld(9, { width: 64, height: 48 });
+    const huge = generateWorld(9, { width: 176, height: 120 });
+    expect(small.world.terrain.length).toBe(64 * 48);
+    expect(huge.world.terrain.length).toBe(176 * 120);
+    expect(small.towns.length).toBeGreaterThanOrEqual(4);
+    expect(huge.towns.length).toBeGreaterThan(small.towns.length * 2);
+    expect(huge.industries.length).toBeGreaterThan(small.industries.length * 2);
+    for (const type of INDUSTRIES) expect(small.industries.some((i) => i.type === type.id)).toBe(true);
+  });
+
   it('has a reasonable terrain mix', () => {
     const s = generateWorld(555);
     const counts = [0, 0, 0, 0, 0];

@@ -1,6 +1,6 @@
 import { NONE } from '../core/constants';
 import { dirBetween, edgeId } from '../core/grid';
-import type { GameState, Id, Industry, Line, Station, Town, Train } from '../core/types';
+import type { GameState, Id, Industry, Line, Station, Town, Train, World } from '../core/types';
 import { TrainState } from '../core/types';
 import { CARGO_COUNT } from '../data/cargo';
 import { AStarScratch } from '../track/astar';
@@ -9,6 +9,7 @@ import { createSegmentTable, rebuildSegments as rebuildSegmentTable, type Segmen
 import { computeCatchment, type Catchment } from '../world/catchment';
 import { Occ } from '../world/terrain';
 import { rebuildNetwork } from '../sim/cargoRouting';
+import { isDoubleEdgeId } from '../track/graph';
 
 /** Derived, never-saved data rebuilt from GameState. */
 export interface Runtime {
@@ -27,7 +28,7 @@ export interface Runtime {
   townAt: Int16Array;
   /** per tile: Occ.* */
   tileOcc: Uint8Array;
-  /** per canonical edge id: train id or -1 */
+  /** per lane: [e] = canonical direction, [e + edges] = opposite direction on double track; train id or -1 */
   edgeOwner: Int32Array;
   segments: SegmentTable;
   /** per segment: number of held edges */
@@ -69,7 +70,7 @@ export function createRuntime(state: GameState): Runtime {
     industryAt: new Int16Array(tiles).fill(-1),
     townAt: new Int16Array(tiles).fill(-1),
     tileOcc: new Uint8Array(tiles),
-    edgeOwner: new Int32Array(edges).fill(-1),
+    edgeOwner: new Int32Array(edges * 2).fill(-1),
     segments: createSegmentTable(state.world),
     segCount: new Int32Array(edges + 1),
     segDir: new Int8Array(edges + 1),
@@ -160,13 +161,32 @@ export function rebuildLocks(state: GameState, rt: Runtime): void {
     const hi = Math.min(train.path.length - 2, train.headEdge);
     for (let i = lo; i <= hi; i++) {
       const e = pathEdgeId(train.path, i, w);
-      claimEdge(rt, e, train.id, trainSegDir(rt, train.path, i, w));
+      claimEdge(rt, state.world, e, pathEdgeForward(train.path, i, w), train.id, trainSegDir(rt, train.path, i, w));
     }
   }
 }
 
 export function pathEdgeId(path: number[], i: number, w: number): number {
   return edgeId(path[i], dirBetween(path[i], path[i + 1], w), w);
+}
+
+/** True if path edge i is travelled in the canonical direction (owner tile -> dir < 4). */
+export function pathEdgeForward(path: number[], i: number, w: number): boolean {
+  return dirBetween(path[i], path[i + 1], w) < 4;
+}
+
+/** Owner-array index for travelling edge e in the given direction (double track has a lane per direction). */
+export function laneIndex(rt: Runtime, world: World, e: number, forward: boolean): number {
+  return !forward && isDoubleEdgeId(world, e) ? e + rt.edges : e;
+}
+
+export function edgeOwnerOf(rt: Runtime, world: World, e: number, forward: boolean): number {
+  return rt.edgeOwner[laneIndex(rt, world, e, forward)];
+}
+
+/** Is either lane of the edge held by a train? */
+export function edgeBusy(rt: Runtime, e: number): boolean {
+  return rt.edgeOwner[e] >= 0 || rt.edgeOwner[e + rt.edges] >= 0;
 }
 
 /** +1/-1: direction of travel along path edge i relative to the segment orientation. */
@@ -178,12 +198,17 @@ export function trainSegDir(rt: Runtime, path: number[], i: number, w: number): 
   return canonicalForward === segForward ? 1 : -1;
 }
 
-/** Claim an edge for a train. Returns false (and does nothing) if another train owns it. */
-export function claimEdge(rt: Runtime, e: number, trainId: Id, dir: number): boolean {
-  const owner = rt.edgeOwner[e];
+/**
+ * Claim a lane of an edge for a train. Returns false (and does nothing) if another train owns it.
+ * Single track also locks the segment's direction; double track never does (one lane per direction).
+ */
+export function claimEdge(rt: Runtime, world: World, e: number, forward: boolean, trainId: Id, dir: number): boolean {
+  const idx = laneIndex(rt, world, e, forward);
+  const owner = rt.edgeOwner[idx];
   if (owner === trainId) return true;
   if (owner !== -1) return false;
-  rt.edgeOwner[e] = trainId;
+  rt.edgeOwner[idx] = trainId;
+  if (isDoubleEdgeId(world, e)) return true;
   const g = rt.segments.edgeSeg[e];
   if (g >= 0) {
     rt.segCount[g]++;
@@ -192,9 +217,11 @@ export function claimEdge(rt: Runtime, e: number, trainId: Id, dir: number): boo
   return true;
 }
 
-export function releaseEdge(rt: Runtime, e: number, trainId: Id): void {
-  if (rt.edgeOwner[e] !== trainId) return;
-  rt.edgeOwner[e] = -1;
+export function releaseEdge(rt: Runtime, world: World, e: number, forward: boolean, trainId: Id): void {
+  const idx = laneIndex(rt, world, e, forward);
+  if (rt.edgeOwner[idx] !== trainId) return;
+  rt.edgeOwner[idx] = -1;
+  if (isDoubleEdgeId(world, e)) return;
   const g = rt.segments.edgeSeg[e];
   if (g >= 0) {
     rt.segCount[g]--;
@@ -206,11 +233,12 @@ export function releaseEdge(rt: Runtime, e: number, trainId: Id): void {
 }
 
 /** Release every edge a train holds (e.g. entering a station box or being sold). */
-export function releaseAllEdges(rt: Runtime, train: Train, w: number): void {
+export function releaseAllEdges(rt: Runtime, train: Train, world: World): void {
   if (train.path.length < 2) return;
+  const w = world.width;
   const lo = Math.max(0, train.tailEdge);
   const hi = Math.min(train.path.length - 2, train.headEdge);
-  for (let i = lo; i <= hi; i++) releaseEdge(rt, pathEdgeId(train.path, i, w), train.id);
+  for (let i = lo; i <= hi; i++) releaseEdge(rt, world, pathEdgeId(train.path, i, w), pathEdgeForward(train.path, i, w), train.id);
 }
 
 export function rebuildStationSlots(state: GameState, rt: Runtime): void {

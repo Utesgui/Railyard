@@ -82,6 +82,34 @@ export function removeEdge(world: World, t: number, d: Dir): void {
   if (n < 0) return;
   world.track[t] &= ~(1 << d);
   world.track[n] &= ~(1 << opposite(d));
+  world.track2[t] &= ~(1 << d);
+  world.track2[n] &= ~(1 << opposite(d));
+}
+
+export function isDouble(world: World, t: number, d: Dir): boolean {
+  return (world.track2[t] & (1 << d)) !== 0;
+}
+
+/** Double-track test by canonical edge id. */
+export function isDoubleEdgeId(world: World, e: number): boolean {
+  return (world.track2[e >> 2] & (1 << (e & 3))) !== 0;
+}
+
+export function setDouble(world: World, t: number, d: Dir, on: boolean): void {
+  const n = neighbor(t, d, world.width, world.height);
+  if (n < 0) return;
+  if (on) {
+    world.track2[t] |= 1 << d;
+    world.track2[n] |= 1 << opposite(d);
+  } else {
+    world.track2[t] &= ~(1 << d);
+    world.track2[n] &= ~(1 << opposite(d));
+  }
+}
+
+/** Cost of upgrading an existing edge to double track. */
+export function doubleUpgradeCost(world: World, t: number, d: Dir): number {
+  return Math.round(edgeBuildCost(world, t, d) * B.doubleTrackCostMult);
 }
 
 /** Money cost of building the edge t->d (averaged terrain, diagonal x1.4). */
@@ -97,7 +125,7 @@ export function edgeMaintenance(world: World, t: number, d: Dir): number {
   const n = neighbor(t, d, world.width, world.height);
   if (n < 0) return 0;
   const special = isSpecialTerrain(world.terrain[t]) || isSpecialTerrain(world.terrain[n]);
-  return B.trackMaintPerEdgeMonth * (special ? B.trackMaintSpecialMult : 1);
+  return B.trackMaintPerEdgeMonth * (special ? B.trackMaintSpecialMult : 1) * (isDouble(world, t, d) ? B.doubleTrackMaintMult : 1);
 }
 
 /** Iterate every edge once (canonical: directions 0..3 from their owner tile). */

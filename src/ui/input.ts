@@ -11,7 +11,6 @@ export interface InputHooks {
 /** Pointer + keyboard handling for the map canvas. */
 export function installInput(game: Game, hooks: InputHooks): void {
   const canvas = game.canvas;
-  const cam = game.cam;
   let downX = 0;
   let downY = 0;
   let lastX = 0;
@@ -41,14 +40,14 @@ export function installInput(game: Game, hooks: InputHooks): void {
     lastY = e.clientY;
     if (downButton >= 0 && Math.hypot(e.clientX - downX, e.clientY - downY) > 4) dragged = true;
     if (panning && dragged && downButton >= 0) {
-      cam.panScreen(dx, dy);
+      game.cam.panScreen(dx, dy);
       canvas.classList.add('panning');
     }
     const rect = canvas.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
-    const tile = cam.tileAt(sx, sy);
-    const { wx, wy } = cam.screenToWorld(sx, sy);
+    const tile = game.cam.tileAt(sx, sy);
+    const { wx, wy } = game.cam.screenToWorld(sx, sy);
     game.ui.hoverTile = tile;
     hooks.tools[game.ui.tool].onMove(tile, wx, wy);
     hooks.onHover(tile, sx, sy);
@@ -62,8 +61,8 @@ export function installInput(game: Game, hooks: InputHooks): void {
     const rect = canvas.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
-    const tile = cam.tileAt(sx, sy);
-    const { wx, wy } = cam.screenToWorld(sx, sy);
+    const tile = game.cam.tileAt(sx, sy);
+    const { wx, wy } = game.cam.screenToWorld(sx, sy);
     if (!dragged) {
       if (button === 0) hooks.tools[game.ui.tool].onClick(tile, e, wx, wy);
       else if (button === 2) hooks.tools[game.ui.tool].onCancel();
@@ -87,7 +86,7 @@ export function installInput(game: Game, hooks: InputHooks): void {
     (e) => {
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
-      cam.zoomStep(e.clientX - rect.left, e.clientY - rect.top, e.deltaY < 0 ? 1 : -1);
+      game.cam.zoomStep(e.clientX - rect.left, e.clientY - rect.top, e.deltaY < 0 ? 1 : -1);
     },
     { passive: false },
   );
@@ -110,6 +109,7 @@ export function installInput(game: Game, hooks: InputHooks): void {
     const dt = Math.min(50, now - last);
     last = now;
     if (held.size > 0) {
+      const cam = game.cam;
       const v = (0.9 * dt) / cam.zoom;
       let dx = 0;
       let dy = 0;

@@ -42,6 +42,16 @@ const MIGRATIONS: Record<number, Migration> = {
     r.tutorialStep ??= -1;
     return raw;
   },
+  // 2 -> 3: double track layer (defaulted by the codec when missing)
+  2: (raw) => raw,
+  // 3 -> 4: contracts, cash history, 'other' ledger category
+  3: (raw) => {
+    const r = raw as { contracts?: unknown[]; economy: { cashHistory?: number[]; ledger: Record<string, unknown>[] } };
+    r.contracts ??= [];
+    r.economy.cashHistory ??= [];
+    for (const l of r.economy.ledger) l.other ??= 0;
+    return raw;
+  },
 };
 
 export function migrate(raw: Record<string, unknown>, from: number): Record<string, unknown> {

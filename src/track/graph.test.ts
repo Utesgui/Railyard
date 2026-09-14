@@ -4,7 +4,7 @@ import { Dir, Terrain, type World } from '../core/types';
 import { addEdge, canAddEdge, countEdges, crossesDiagonal, hasEdge, isStraightOrEmpty, removeEdge } from './graph';
 
 function world(w = 8, h = 8): World {
-  return { seed: 0, width: w, height: h, terrain: new Uint8Array(w * h).fill(Terrain.Grass), track: new Uint8Array(w * h) };
+  return { seed: 0, width: w, height: h, terrain: new Uint8Array(w * h).fill(Terrain.Grass), track: new Uint8Array(w * h), track2: new Uint8Array(w * h) };
 }
 
 describe('track graph', () => {

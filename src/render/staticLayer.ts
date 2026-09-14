@@ -2,7 +2,8 @@ import type { Runtime } from '../app/runtime';
 import { TILE_PX } from '../core/constants';
 import { hash2 } from '../core/rng';
 import { Terrain, type GameState } from '../core/types';
-import { INDUSTRIES } from '../data/industries';
+import { INDUSTRIES, IndustryKind } from '../data/industries';
+import { Occ } from '../world/terrain';
 import type { Camera } from './camera';
 import { COLORS, TERRAIN_COLORS, TERRAIN_COLORS_ALT } from './palette';
 
@@ -72,6 +73,20 @@ export class StaticLayer {
     const terrain = state.world.terrain;
     const x0 = cx * CHUNK_TILES;
     const y0 = cy * CHUNK_TILES;
+    // decorative crop fields around farms (grass tiles within 2 of the footprint)
+    const fields = new Map<number, number>();
+    for (const ind of state.industries) {
+      if (ind.type !== IndustryKind.Farm) continue;
+      if (ind.x + 4 < x0 || ind.x - 3 > x0 + CHUNK_TILES || ind.y + 4 < y0 || ind.y - 3 > y0 + CHUNK_TILES) continue;
+      for (let yy = ind.y - 2; yy <= ind.y + 3; yy++) {
+        for (let xx = ind.x - 2; xx <= ind.x + 3; xx++) {
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          const t = yy * w + xx;
+          if (terrain[t] !== Terrain.Grass || rt.tileOcc[t] !== Occ.Free) continue;
+          fields.set(t, ind.id);
+        }
+      }
+    }
     for (let ty = 0; ty < CHUNK_TILES; ty++) {
       const y = y0 + ty;
       if (y >= h) break;
@@ -85,7 +100,9 @@ export class StaticLayer {
         const alt = hash2(x, y) & 1;
         g.fillStyle = alt ? TERRAIN_COLORS_ALT[ter] : TERRAIN_COLORS[ter];
         g.fillRect(px, py, TILE_PX, TILE_PX);
-        drawTerrainDetail(g, ter, px, py, hash2(x * 31, y * 17));
+        const farm = fields.get(t);
+        if (farm !== undefined) drawField(g, px, py, farm + x + y);
+        else drawTerrainDetail(g, ter, px, py, hash2(x * 31, y * 17));
       }
     }
     // towns
@@ -173,6 +190,22 @@ function drawTerrainDetail(g: CanvasRenderingContext2D, ter: number, px: number,
     default:
       break;
   }
+}
+
+/** Ploughed field with crop rows; row direction alternates per farm for variety. */
+function drawField(g: CanvasRenderingContext2D, px: number, py: number, seed: number): void {
+  const vertical = (seed & 2) !== 0;
+  const ripe = (seed & 4) !== 0;
+  g.fillStyle = ripe ? '#c9b45a' : '#a9b85a';
+  g.fillRect(px, py, TILE_PX, TILE_PX);
+  g.fillStyle = ripe ? 'rgba(120,90,30,0.35)' : 'rgba(70,90,30,0.35)';
+  for (let i = 0; i < 4; i++) {
+    if (vertical) g.fillRect(px + 3 + i * 8, py, 3, TILE_PX);
+    else g.fillRect(px, py + 3 + i * 8, TILE_PX, 3);
+  }
+  g.strokeStyle = 'rgba(0,0,0,0.12)';
+  g.lineWidth = 1;
+  g.strokeRect(px + 0.5, py + 0.5, TILE_PX - 1, TILE_PX - 1);
 }
 
 function drawHouse(g: CanvasRenderingContext2D, px: number, py: number, rnd: number, big: boolean): void {

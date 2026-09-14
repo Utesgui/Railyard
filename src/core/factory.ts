@@ -14,6 +14,7 @@ export function newLedgerMonth(year: number, month: number): LedgerMonth {
     construction: 0,
     vehicles: 0,
     loanInterest: 0,
+    other: 0,
   };
 }
 

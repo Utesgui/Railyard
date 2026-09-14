@@ -20,6 +20,28 @@ export interface ToolHost {
   closePanel(): void;
 }
 
+/** Nearest track edge (from the hovered tile's centre) within 9 px of the world point, or null. */
+function nearestEdge(game: Game, tile: number, wx: number, wy: number): { t: number; d: Dir } | null {
+  if (tile < 0) return null;
+  const w = game.state.world.width;
+  const cx = ((tile % w) + 0.5) * TILE_PX;
+  const cy = (((tile / w) | 0) + 0.5) * TILE_PX;
+  let best: { t: number; d: Dir } | null = null;
+  let bd = 9;
+  const mask = game.state.world.track[tile];
+  for (let d = 0; d < 8; d++) {
+    if (!(mask & (1 << d))) continue;
+    const nx = cx + DIR_DX[d] * TILE_PX;
+    const ny = cy + DIR_DY[d] * TILE_PX;
+    const dist = pointSegDist(wx, wy, cx, cy, nx, ny);
+    if (dist < bd) {
+      bd = dist;
+      best = { t: tile, d: d as Dir };
+    }
+  }
+  return best;
+}
+
 export function createTools(game: Game, host: ToolHost): Record<ToolName, Tool> {
   const ui = game.ui;
 
@@ -147,21 +169,33 @@ export function createTools(game: Game, host: ToolHost): Record<ToolName, Tool> 
         ui.demolishStation = st;
         return;
       }
-      // nearest edge from this tile's center within 9 px
-      let best: { t: number; d: Dir } | null = null;
-      let bd = 9;
-      const mask = game.state.world.track[tile];
-      for (let d = 0; d < 8; d++) {
-        if (!(mask & (1 << d))) continue;
-        const nx = cx + DIR_DX[d] * TILE_PX;
-        const ny = cy + DIR_DY[d] * TILE_PX;
-        const dist = pointSegDist(wx, wy, cx, cy, nx, ny);
-        if (dist < bd) {
-          bd = dist;
-          best = { t: tile, d: d as Dir };
-        }
-      }
+      const best = nearestEdge(game, tile, wx, wy);
       if (best && hasEdge(game.state.world, best.t, best.d)) ui.demolishEdge = best;
+    },
+    onCancel() {
+      game.setTool('inspect');
+    },
+  };
+
+  const upgrade: Tool = {
+    onClick(tile) {
+      const hv = ui.upgradeHover;
+      if (!hv) return;
+      const res = game.cmd.upgradeSegment(hv.t, hv.d);
+      if (!res.ok) host.toast('warn', res.reason ?? 'cannot upgrade');
+      ui.upgradeHover = null;
+      this.onMove(tile, 0, 0);
+    },
+    onMove(tile, wx, wy) {
+      const best = nearestEdge(game, tile, wx, wy);
+      if (!best) {
+        ui.upgradeHover = null;
+        return;
+      }
+      if (ui.upgradeHover && ui.upgradeHover.t === best.t && ui.upgradeHover.d === best.d) return;
+      const edges = game.cmd.segmentEdges(best.t, best.d);
+      const { cost, count } = game.cmd.segmentUpgradeCost(edges);
+      ui.upgradeHover = { t: best.t, d: best.d, edges, cost, count };
     },
     onCancel() {
       game.setTool('inspect');
@@ -184,7 +218,7 @@ export function createTools(game: Game, host: ToolHost): Record<ToolName, Tool> 
     },
   };
 
-  return { inspect, track, station, demolish, line };
+  return { inspect, track, station, demolish, line, upgrade };
 }
 
 function pointSegDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {

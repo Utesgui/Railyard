@@ -76,3 +76,57 @@ export function barChart(values: number[], opts: BarChartOptions): HTMLElement {
   wrap.appendChild(svg);
   return wrap;
 }
+
+export interface LineChartOptions {
+  format: (v: number) => string;
+  labels?: string[];
+  height?: number;
+  color?: string;
+  emptyText?: string;
+}
+
+/** Single-series line chart with a faint area fill, min/max labels and an emphasised last point. */
+export function lineChart(values: number[], opts: LineChartOptions): HTMLElement {
+  const wrap = h('div', { className: 'chart' });
+  if (values.length < 2) {
+    wrap.appendChild(h('div', { className: 'muted' }, opts.emptyText ?? 'Not enough data yet'));
+    return wrap;
+  }
+  const W = 280;
+  const H = opts.height ?? 72;
+  const padL = 2;
+  const padR = 6;
+  const padT = 12;
+  const padB = 12;
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const span = max - min || 1;
+  const innerH = H - padT - padB;
+  const innerW = W - padL - padR;
+  const color = opts.color ?? '#4fb0ff';
+  const px = (i: number) => padL + (i / (values.length - 1)) * innerW;
+  const py = (v: number) => padT + (1 - (v - min) / span) * innerH;
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%', height: H, role: 'img' });
+  svg.style.display = 'block';
+  for (const y of [py(max), py(min)]) svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: y, y2: y, stroke: 'rgba(255,255,255,0.12)', 'stroke-width': 1 }));
+  const pts = values.map((v, i) => `${px(i).toFixed(1)},${py(v).toFixed(1)}`);
+  svg.appendChild(el('path', { d: `M${pts[0]} L${pts.slice(1).join(' L')} L${px(values.length - 1).toFixed(1)},${H - padB} L${padL},${H - padB} Z`, fill: color, opacity: 0.15 }));
+  svg.appendChild(el('polyline', { points: pts.join(' '), fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-linejoin': 'round' }));
+  values.forEach((v, i) => {
+    const c = el('circle', { cx: px(i), cy: py(v), r: i === values.length - 1 ? 3.5 : 6, fill: i === values.length - 1 ? color : 'transparent' });
+    const title = document.createElementNS(NS, 'title');
+    title.textContent = `${opts.labels?.[i] ?? ''} ${opts.format(v)}`.trim();
+    c.appendChild(title);
+    svg.appendChild(c);
+  });
+  const label = (text: string, x: number, y: number, anchor: string) => {
+    const t = el('text', { x, y, 'text-anchor': anchor, fill: 'rgba(232,230,224,0.75)', 'font-size': 10 });
+    t.textContent = text;
+    svg.appendChild(t);
+  };
+  label(opts.format(max), W - padR, padT - 3, 'end');
+  label(opts.format(min), W - padR, H - 2, 'end');
+  if (opts.labels) label(opts.labels[0], padL, H - 2, 'start');
+  wrap.appendChild(svg);
+  return wrap;
+}

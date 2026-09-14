@@ -1,6 +1,7 @@
 import type { Runtime } from '../../app/runtime';
 import { TILE_PX } from '../../core/constants';
-import { DIR_ANGLE, dirBetween } from '../../core/grid';
+import { DIR_ANGLE, dirBetween, edgeId } from '../../core/grid';
+import { isDoubleEdgeId } from '../../track/graph';
 import type { GameState, Train } from '../../core/types';
 import { TrainState } from '../../core/types';
 import { B } from '../../data/balance';
@@ -69,6 +70,7 @@ export function vehiclePoses(state: GameState, rt: Runtime, train: Train, alpha:
     let y: number;
     let ang: number;
     let scale = 1;
+    let edgeIdx = 0;
     if (p <= 0) {
       // still inside the departure building: grows out of it
       const d = dirBetween(path[0], path[1], w);
@@ -87,6 +89,7 @@ export function vehiclePoses(state: GameState, rt: Runtime, train: Train, alpha:
       x = c.x + Math.cos(ang) * q * TILE_PX;
       y = c.y + Math.sin(ang) * q * TILE_PX;
       scale = Math.max(0, 1 - (p - total) / BOX_FADE);
+      edgeIdx = last - 1;
     } else {
       // find edge containing p, searching down from the head edge
       let i = edge;
@@ -98,6 +101,14 @@ export function vehiclePoses(state: GameState, rt: Runtime, train: Train, alpha:
       x = a.x + (b.x - a.x) * f;
       y = a.y + (b.y - a.y) * f;
       ang = DIR_ANGLE[dirBetween(path[i], path[i + 1], w)];
+      edgeIdx = i;
+    }
+    // right-hand lane on double track
+    const d = dirBetween(path[edgeIdx], path[edgeIdx + 1], w);
+    if (isDoubleEdgeId(state.world, edgeId(path[edgeIdx], d, w))) {
+      const lane = B.doubleLaneOffsetPx;
+      x += -Math.sin(ang) * lane;
+      y += Math.cos(ang) * lane;
     }
     o.x = x;
     o.y = y;

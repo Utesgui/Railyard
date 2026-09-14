@@ -7,7 +7,7 @@ export interface Selection {
   id: number;
 }
 
-export type ToolName = 'inspect' | 'track' | 'station' | 'demolish' | 'line';
+export type ToolName = 'inspect' | 'track' | 'station' | 'demolish' | 'line' | 'upgrade';
 
 export interface UIState {
   selection: Selection;
@@ -24,6 +24,8 @@ export interface UIState {
   /** demolish tool highlights */
   demolishEdge: { t: number; d: Dir } | null;
   demolishStation: number;
+  /** upgrade tool: hovered segment */
+  upgradeHover: { t: number; d: Dir; edges: number[]; cost: number; count: number } | null;
   /** line id currently receiving stops via the line tool, or -1 */
   editingLine: number;
   showCatchment: boolean;
@@ -44,6 +46,7 @@ export function newUIState(): UIState {
     stationHoverOk: false,
     demolishEdge: null,
     demolishStation: -1,
+    upgradeHover: null,
     editingLine: -1,
     showCatchment: false,
     showLines: true,

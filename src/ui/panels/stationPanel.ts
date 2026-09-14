@@ -93,9 +93,13 @@ export function registerStationPanel(host: PanelHost): void {
         for (const l of lines) linesList.appendChild(h('div', { className: 'item clickable', onClick: () => game.select('line', l.id) }, h('span', { className: 'swatch', style: { background: lineColor(l.color) } }), l.name));
         if (lines.length === 0) linesList.appendChild(h('div', { className: 'muted' }, 'No line stops here yet.'));
       }
-      clear(docked);
-      for (const tr of dockedTrains(s, id)) docked.appendChild(h('div', { className: 'item clickable', onClick: () => game.select('train', tr.id) }, h('span', { className: 'grow' }, tr.name), h('span', { className: 'muted' }, stateText(tr.state))));
-      if (!docked.firstChild) docked.appendChild(h('div', { className: 'muted' }, 'None'));
+      const dk = dockedTrains(s, id).map((tr) => `${tr.id}:${tr.state}`).join(',');
+      if (docked.dataset.key !== dk) {
+        docked.dataset.key = dk;
+        clear(docked);
+        for (const tr of dockedTrains(s, id)) docked.appendChild(h('div', { className: 'item clickable', onClick: () => game.select('train', tr.id) }, h('span', { className: 'grow' }, tr.name), h('span', { className: 'muted' }, stateText(tr.state))));
+        if (!docked.firstChild) docked.appendChild(h('div', { className: 'muted' }, 'None'));
+      }
       clear(traffic);
       for (let c = 0; c < CARGO_COUNT; c++) {
         const up = st.pickedUpLastMonth[c] + st.pickedUpMonth[c];

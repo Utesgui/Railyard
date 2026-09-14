@@ -18,23 +18,34 @@ export interface GenOptions {
 }
 
 /** Generate a complete new-game state from a seed. Deterministic. */
+/** Preset map sizes (tiles). */
+export const MAP_SIZES = {
+  small: { w: 64, h: 48, name: 'Small (64×48)' },
+  medium: { w: 96, h: 64, name: 'Medium (96×64)' },
+  large: { w: 128, h: 96, name: 'Large (128×96)' },
+  huge: { w: 176, h: 120, name: 'Huge (176×120)' },
+} as const;
+export type MapSizeKey = keyof typeof MAP_SIZES;
+
 export function generateWorld(seed: number, opts: GenOptions = {}): GameState {
   const w = opts.width ?? MAP_W;
   const h = opts.height ?? MAP_H;
   const rng = new Rng(hash2(seed, 0x7a11));
+  /** density scale relative to the medium map: towns and industries grow with the area */
+  const areaScale = (w * h) / (MAP_W * MAP_H);
 
   let terrainResult: { terrain: Uint8Array; mainland: Uint8Array } | null = null;
   for (let attempt = 0; attempt < 10 && !terrainResult; attempt++) {
     terrainResult = genTerrain(hash2(seed, 0x1000 + attempt), w, h, attempt === 9);
   }
   const { terrain, mainland } = terrainResult!;
-  const world: World = { seed, width: w, height: h, terrain, track: new Uint8Array(w * h) };
+  const world: World = { seed, width: w, height: h, terrain, track: new Uint8Array(w * h), track2: new Uint8Array(w * h) };
   const occ = new Uint8Array(w * h);
 
-  let towns = placeTowns(rng, world, mainland, occ);
+  let towns = placeTowns(rng, world, mainland, occ, areaScale);
   const scratch = new AStarScratch(w * h);
   towns = validateTowns(world, occ, towns, scratch);
-  const industries = placeIndustries(rng, world, mainland, occ, towns, scratch);
+  const industries = placeIndustries(rng, world, mainland, occ, towns, scratch, areaScale);
 
   let nextId = 1;
   for (const t of towns) t.id = nextId++;
@@ -53,11 +64,12 @@ export function generateWorld(seed: number, opts: GenOptions = {}): GameState {
     stations: [],
     lines: [],
     trains: [],
-    economy: { money: opts.startMoney ?? B.startMoney, startMoney: opts.startMoney ?? B.startMoney, loan: 0, ledger: [newLedgerMonth(START_YEAR, 0)], yearly: [], monthsInsolvent: 0 },
+    economy: { money: opts.startMoney ?? B.startMoney, startMoney: opts.startMoney ?? B.startMoney, loan: 0, ledger: [newLedgerMonth(START_YEAR, 0)], yearly: [], monthsInsolvent: 0, cashHistory: [] },
     notifications: [],
     achievements: [],
     stats: { paxDelivered: 0, cargoDelivered: 0, revenueTotal: 0, trainsBought: 0, byCargo: new Array(CARGO_COUNT).fill(0) },
     tutorialStep: 0,
+    contracts: [],
   };
 }
 
@@ -180,10 +192,10 @@ function countAround(world: World, x: number, y: number, r: number, pred: (t: nu
   return c;
 }
 
-function placeTowns(rng: Rng, world: World, mainland: Uint8Array, occ: Uint8Array): Town[] {
+function placeTowns(rng: Rng, world: World, mainland: Uint8Array, occ: Uint8Array, areaScale = 1): Town[] {
   const w = world.width;
   const h = world.height;
-  const target = 12 + rng.intRange(-2, 2);
+  const target = Math.max(4, Math.round(12 * areaScale) + rng.intRange(-2, 2));
   const candidates: number[] = [];
   for (let y = 4; y < h - 4; y++) {
     for (let x = 4; x < w - 4; x++) {
@@ -306,7 +318,7 @@ function routeAffordable(world: World, occ: Uint8Array, a: number, b: number, sc
 
 /** Remove towns that cannot be affordably connected to either of their two nearest neighbours. */
 function validateTowns(world: World, occ: Uint8Array, towns: Town[], scratch: AStarScratch): Town[] {
-  if (towns.length <= 6) return towns;
+  if (towns.length <= 4) return towns;
   const w = world.width;
   const keep: Town[] = [];
   const removed: Town[] = [];
@@ -318,7 +330,7 @@ function validateTowns(world: World, occ: Uint8Array, towns: Town[], scratch: AS
       .slice(0, 2);
     const a = accessTile(world, occ, town.x, town.y);
     const ok = others.some(({ o }) => routeAffordable(world, occ, a, accessTile(world, occ, o.x, o.y), scratch));
-    if (ok || towns.length - removed.length <= 6) keep.push(town);
+    if (ok || towns.length - removed.length <= 4) keep.push(town);
     else removed.push(town);
   }
   for (const t of removed) for (const tile of t.tiles) occ[tile] = Occ.Free;
@@ -329,7 +341,7 @@ function validateTowns(world: World, occ: Uint8Array, towns: Town[], scratch: AS
 // ---------------------------------------------------------------------------------------------
 // industries
 
-function placeIndustries(rng: Rng, world: World, mainland: Uint8Array, occ: Uint8Array, towns: Town[], scratch: AStarScratch): Industry[] {
+function placeIndustries(rng: Rng, world: World, mainland: Uint8Array, occ: Uint8Array, towns: Town[], scratch: AStarScratch, areaScale = 1): Industry[] {
   const w = world.width;
   const h = world.height;
   const industries: Industry[] = [];
@@ -438,7 +450,7 @@ function placeIndustries(rng: Rng, world: World, mainland: Uint8Array, occ: Uint
   // raw industries first, then processors (which are validated against a supplier)
   const order = [...INDUSTRIES].sort((a, b) => Number(isRawIndustry(b)) - Number(isRawIndustry(a)));
   for (const type of order) {
-    const count = rng.intRange(type.count[0], type.count[1]);
+    const count = Math.max(1, Math.round(rng.intRange(type.count[0], type.count[1]) * areaScale));
     for (let i = 0; i < count; i++) {
       let placed: Industry | null = null;
       for (let round = 0; round < 3 && !placed; round++) {

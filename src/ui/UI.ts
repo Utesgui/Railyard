@@ -10,12 +10,14 @@ import { registerEntityPanels } from './panels/entityPanels';
 import { registerLinePanels } from './panels/linePanel';
 import { registerStationPanel } from './panels/stationPanel';
 import { applyUiScale, registerSystemPanels } from './panels/systemPanels';
+import { registerContractsPanel } from './panels/contractsPanel';
 import { getSetting } from '../save/storage';
 import { registerTrainPanels } from './panels/trainPanel';
 import { createTools } from './tools';
 import type { SelectionKind, ToolName } from './uiState';
 import { closeDialog, isDialogOpen, showAchievements, showGameOver, showYearSummary } from './dialogs';
 import { dismissTutorial, tutorialText } from './tutorial';
+import { sfx } from './sfx';
 
 const HINTS: Record<ToolName, string> = {
   inspect: '',
@@ -23,6 +25,7 @@ const HINTS: Record<ToolName, string> = {
   station: 'Click a free tile within 3 tiles of a town or industry. Right-click / Esc cancels.',
   demolish: 'Click a piece of track or a station to remove it (25% refund).',
   line: 'Click stations on the map to add them as stops. Esc when done.',
+  upgrade: 'Hover a track to see its segment (junction to junction); click to upgrade it to double track so trains can pass in both directions.',
 };
 
 /** Builds and wires the DOM HUD around the canvas. */
@@ -42,6 +45,7 @@ export class UI {
     registerLinePanels(this.panels);
     registerTrainPanels(this.panels);
     registerSystemPanels(this.panels);
+    registerContractsPanel(this.panels);
 
     this.topbar = createTopbar(game, this.panels);
     document.getElementById('topbar')!.appendChild(this.topbar.el);
@@ -50,7 +54,6 @@ export class UI {
     installToasts(game, document.getElementById('toasts')!);
     this.tooltip = document.getElementById('tooltip')!;
     this.hint = document.getElementById('hint')!;
-    void hud;
     applyUiScale(getSetting<number>('uiScale', 1));
 
     const tools = createTools(game, {
@@ -80,6 +83,32 @@ export class UI {
       if (game.state.tick > 0) showYearSummary(game);
     });
     game.events.on('gameOver', () => showGameOver(game, () => this.panels.open('settings')));
+    // sounds: start the audio context on the first gesture, then react to game events
+    const arm = () => sfx.ensure();
+    window.addEventListener('pointerdown', arm);
+    window.addEventListener('keydown', arm);
+    hud.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.btn')) sfx.play('click');
+    });
+    game.events.on('floater', (f) => {
+      if (f.color === '#6fcf6f' || f.color === '#f2c14e') sfx.play('cash');
+    });
+    game.events.on('notify', (n) => {
+      if (n.kind === 'warn') sfx.play('warn');
+    });
+    game.events.on('achievement', () => sfx.play('achievement'));
+    game.events.on('contract', (c) => {
+      if (c.status !== 'failed') sfx.play('contract');
+    });
+    game.events.on('trackChanged', () => sfx.play('build'));
+    game.events.on('depart', (tile) => {
+      // only whistle for departures near the viewport
+      const w = game.state.world.width;
+      const x = ((tile % w) + 0.5) * 32;
+      const y = (((tile / w) | 0) + 0.5) * 32;
+      const { sx, sy } = game.cam.worldToScreen(x, y);
+      if (sx >= -200 && sy >= -200 && sx <= game.cam.vw + 200 && sy <= game.cam.vh + 200) sfx.play('whistle');
+    });
     (window as unknown as { __showAchievements: () => void }).__showAchievements = () => showAchievements(game);
     game.events.on('stateReplaced', () => {
       this.panels.close();
@@ -188,6 +217,9 @@ export class UI {
       case 'x':
         g.setTool('demolish');
         return true;
+      case 'u':
+        g.setTool('upgrade');
+        return true;
       case 'l':
         this.panels.isOpen('lines') ? this.panels.close() : this.panels.open('lines');
         return true;
@@ -201,6 +233,9 @@ export class UI {
         this.panels.isOpen('settings') ? this.panels.close() : this.panels.open('settings');
         return true;
       case 'c':
+        this.panels.isOpen('contracts') ? this.panels.close() : this.panels.open('contracts');
+        return true;
+      case 'h':
         g.ui.showCatchment = !g.ui.showCatchment;
         return true;
       case '+':
