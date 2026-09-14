@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig(({ command }) => ({
   // dev server at '/', production build served from GitHub Pages under the repo path
-  base: command === 'build' ? '/Z-geZ-geZ-ge/' : '/',
+  base: command === 'build' ? '/Railyard/' : '/',
   build: {
     target: 'es2022',
     sourcemap: true,
