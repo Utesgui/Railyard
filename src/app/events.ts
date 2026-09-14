@@ -14,6 +14,10 @@ export interface EventMap {
   stateReplaced: void;
   toolChanged: string;
   speedChanged: void;
+  /** floating money / status text above a tile */
+  floater: { tile: number; text: string; color: string };
+  achievement: string;
+  gameOver: void;
 }
 
 type Handler<T> = (payload: T) => void;

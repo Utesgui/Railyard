@@ -40,6 +40,8 @@ export const B = {
   aeroCoef: 0.0004,
   lookaheadExtra: 1.5,
   nodeStopMargin: 0.15,
+  /** tiles before the station centre where a train waits for a free platform */
+  boxEntrance: 0.35,
 
   // --- trains ---
   lifespanYears: 25,

@@ -81,6 +81,12 @@ export interface Station {
   /** per CargoId, true once the cargo has ever been offered here */
   seen: boolean[];
   builtDay: number;
+  /** per CargoId: units loaded onto trains this / last month */
+  pickedUpMonth: number[];
+  pickedUpLastMonth: number[];
+  /** per CargoId: units unloaded here this / last month */
+  deliveredMonth: number[];
+  deliveredLastMonth: number[];
 }
 
 export interface LineStop {
@@ -101,6 +107,11 @@ export interface Line {
   costMonth: number;
   revenueLastMonth: number;
   costLastMonth: number;
+  /** net profit of the last 12 completed months, newest first */
+  profitHistory: number[];
+  /** per CargoId: units delivered by this line's trains this / last month */
+  cargoMonth: number[];
+  cargoLastMonth: number[];
 }
 
 export interface Wagon {
@@ -160,6 +171,16 @@ export interface Train {
   profitMonth: number;
   profitLastMonth: number;
   profitYear: number;
+  /** net profit of the last 12 completed months, newest first */
+  profitHistory: number[];
+  /** units delivered over the train's life */
+  deliveredTotal: number;
+  /** tiles travelled over the train's life */
+  distanceTotal: number;
+  /** load factor sampling (per departure) for the running month */
+  loadSum: number;
+  loadCount: number;
+  loadFactorLastMonth: number;
 }
 
 export interface LedgerMonth {
@@ -177,6 +198,7 @@ export interface LedgerMonth {
 
 export interface Economy {
   money: number;
+  startMoney: number;
   loan: number;
   /** [0] = current month, newest first, max 36 */
   ledger: LedgerMonth[];
@@ -215,5 +237,10 @@ export interface GameState {
     paxDelivered: number;
     cargoDelivered: number;
     revenueTotal: number;
+    trainsBought: number;
+    /** per CargoId: units delivered over the whole game */
+    byCargo: number[];
   };
+  /** tutorial progress: index of the next hint to show, -1 = done */
+  tutorialStep: number;
 }

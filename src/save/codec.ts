@@ -46,5 +46,7 @@ export function decodeState(json: string): { state: GameState; name: string; sav
   if (terrain.length !== world.width * world.height || track.length !== terrain.length) throw new Error('Corrupt world data');
   const state = { ...raw, world: { ...world, terrain, track } } as unknown as GameState;
   state.schema = SAVE_SCHEMA;
+  // defaults for fields added within the current schema
+  (state.stats as { byCargo?: number[] }).byCargo ??= new Array(12).fill(0);
   return { state, name: file.name ?? 'save', savedAt: file.savedAt ?? '' };
 }

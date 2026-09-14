@@ -2,7 +2,7 @@ import type { Runtime } from '../app/runtime';
 import type { GameState } from '../core/types';
 import type { UIState } from '../ui/uiState';
 import type { Camera } from './camera';
-import { drawTrains } from './dynamicLayer';
+import { drawTrains, type Floaters } from './dynamicLayer';
 import { drawOverlay } from './overlayLayer';
 import { StaticLayer } from './staticLayer';
 import { drawTracks } from './trackLayer';
@@ -30,7 +30,7 @@ export class Renderer {
     this.cam.resize(w, h, dpr);
   }
 
-  draw(state: GameState, rt: Runtime, ui: UIState, alpha: number): void {
+  draw(state: GameState, rt: Runtime, ui: UIState, alpha: number, floaters: Floaters): void {
     const ctx = this.ctx;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#10151a';
@@ -42,6 +42,7 @@ export class Renderer {
     drawTrains(ctx, this.cam, state, rt, alpha, ui.selection.kind === 'train' ? ui.selection.id : -1);
     this.cam.apply(ctx);
     drawOverlay(ctx, this.cam, state, rt, ui);
+    floaters.draw(ctx, this.cam);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 }

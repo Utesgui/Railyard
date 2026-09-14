@@ -8,8 +8,12 @@ import { consistInfo, trainCapacity, trainLoad } from '../../sim/train/consist';
 import { trainHeadWorld, type VehiclePose } from '../../sim/train/geometry';
 import { LINE_COLORS } from '../../render/palette';
 import { button, clear, h, kv, row } from '../dom';
-import { fmtMoney, fmtPct, fmtSpeed } from '../format';
+import { fmtInt, fmtMoney, fmtMoneyShort, fmtPct, fmtSpeed } from '../format';
+import { barChart } from '../chart';
+import { monthLabels } from './stats';
+import { trainAgeYears } from '../../sim/train/step';
 import { t } from '../../i18n/t';
+import { cargoIcon, classCargo } from '../icons';
 import type { PanelHost } from './PanelHost';
 import { stateText } from './linePanel';
 
@@ -28,6 +32,11 @@ export function registerTrainPanels(host: PanelHost): void {
     const profitEl = h('span');
     const profitLastEl = h('span');
     const relEl = h('span');
+    const ageEl = h('span');
+    const deliveredEl = h('span');
+    const distanceEl = h('span');
+    const loadFactorEl = h('span');
+    const chartWrap = h('div');
     const consist = h('div', { className: 'wagon-row' });
     const cargoList = h('div', { className: 'list' });
     const stopBtn = button('', () => game.cmd.stopTrain(id), 'btn small');
@@ -66,11 +75,12 @@ export function registerTrainPanels(host: PanelHost): void {
       row(stopBtn, resumeBtn, refitBtn),
       row(h('span', { className: 'muted' }, t('assignTo') + ' '), lineSelect),
       h('h3', null, t('profit')),
-      kv(t('thisMonth'), profitEl),
-      kv(t('lastMonth'), profitLastEl),
+      h('div', { className: 'stat-grid' }, kv(t('thisMonth'), profitEl), kv(t('lastMonth'), profitLastEl), kv('Load factor', loadFactorEl), kv('Age', ageEl), kv('Delivered', deliveredEl), kv('Distance', distanceEl)),
+      h('h3', null, 'Profit, last 12 months'),
+      chartWrap,
     );
     let consistKey = '';
-    let linesKey = '';
+    let linesKey = '\0';
     const update = () => {
       const s = game.state;
       const rt = game.rt;
@@ -94,6 +104,16 @@ export function registerTrainPanels(host: PanelHost): void {
       relEl.textContent = fmtPct(train.reliability);
       profitEl.textContent = fmtMoney(train.profitMonth);
       profitLastEl.textContent = fmtMoney(train.profitLastMonth);
+      loadFactorEl.textContent = train.loadCount > 0 ? fmtPct(train.loadSum / train.loadCount) : train.loadFactorLastMonth > 0 ? fmtPct(train.loadFactorLastMonth) : '–';
+      ageEl.textContent = `${trainAgeYears(s, train).toFixed(1)} y`;
+      deliveredEl.textContent = `${fmtInt(train.deliveredTotal)} units`;
+      distanceEl.textContent = `${fmtInt(train.distanceTotal)} km`;
+      const hk = train.profitHistory.join(',');
+      if (chartWrap.dataset.key !== hk) {
+        chartWrap.dataset.key = hk;
+        clear(chartWrap);
+        chartWrap.appendChild(barChart([...train.profitHistory].reverse(), { format: fmtMoneyShort, labels: monthLabels(s, train.profitHistory.length) }));
+      }
       stopBtn.textContent = train.state === TrainState.Stopped ? t('stStopped') : train.stopAtNext ? 'Cancel stop' : t('stopAtNext');
       stopBtn.disabled = train.state === TrainState.Stopped;
       resumeBtn.hidden = train.state !== TrainState.Stopped;
@@ -112,14 +132,16 @@ export function registerTrainPanels(host: PanelHost): void {
           consist.appendChild(h('div', { className: 'wagon', style: { background: color }, title: `${spec.name}: ${wg.cargo >= 0 ? `${wg.amount} ${CARGO[wg.cargo].name}` : 'empty'}` }, `${wg.amount}/${spec.capacity}`));
         }
         clear(cargoList);
-        const byCargo = new Map<string, number>();
+        const byCargo = new Map<string, { cargo: number; label: string; amount: number }>();
         for (const wg of train.wagons) {
           if (wg.cargo < 0 || wg.amount <= 0) continue;
           const dest = rt.stationById.get(wg.dest)?.name ?? '?';
-          const k = `${CARGO[wg.cargo].name} → ${dest}`;
-          byCargo.set(k, (byCargo.get(k) ?? 0) + wg.amount);
+          const k = `${wg.cargo}:${wg.dest}`;
+          const cur = byCargo.get(k) ?? { cargo: wg.cargo, label: `${CARGO[wg.cargo].name} → ${dest}`, amount: 0 };
+          cur.amount += wg.amount;
+          byCargo.set(k, cur);
         }
-        for (const [k, v] of byCargo) cargoList.appendChild(h('div', { className: 'item' }, h('span', { className: 'grow' }, k), String(v)));
+        for (const v of byCargo.values()) cargoList.appendChild(h('div', { className: 'item' }, cargoIcon(v.cargo), h('span', { className: 'grow' }, v.label), String(v.amount)));
       }
       const lk = s.lines.map((l) => l.id + l.name).join(',') + '|' + train.lineId;
       if (lk !== linesKey) {
@@ -193,7 +215,7 @@ export function registerTrainPanels(host: PanelHost): void {
       clear(wagonBtns);
       for (const w of wagons) {
         wagonBtns.appendChild(
-          h('button', { className: 'btn small', title: `${w.name}: ${w.capacity} ${CLASS_LABEL[w.cls]} · ${fmtMoney(w.price)} · ${fmtMoney(w.runCost)}/mo`, onClick: () => { if (chosen.length < B.maxWagons) { chosen.push(w.id); render(); } } }, `+ ${w.name}`),
+          h('button', { className: 'btn small', title: `${w.name}: ${w.capacity} ${CLASS_LABEL[w.cls]} · ${fmtMoney(w.price)} · ${fmtMoney(w.runCost)}/mo`, onClick: () => { if (chosen.length < B.maxWagons) { chosen.push(w.id); render(); } } }, cargoIcon(classCargo(w.cls), 12), ` ${w.name}`),
         );
       }
       wagonBtns.appendChild(button(t('clear'), () => { chosen = []; render(); }, 'btn small'));

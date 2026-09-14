@@ -5,6 +5,9 @@ import { INDUSTRIES } from '../../data/industries';
 import { pileCap, totalWaiting } from '../../sim/station';
 import { button, clear, h, kv, row } from '../dom';
 import { fmtInt, fmtMoney, fmtPct } from '../format';
+import { cargoIcon } from '../icons';
+import { dockedTrains } from '../../sim/train/geometry';
+import { stateText } from './linePanel';
 import { t } from '../../i18n/t';
 import type { PanelHost } from './PanelHost';
 
@@ -35,6 +38,8 @@ export function registerStationPanel(host: PanelHost): void {
     const cargoList = h('div', { className: 'list' });
     const coverage = h('div', { className: 'list' });
     const linesList = h('div', { className: 'list' });
+    const docked = h('div', { className: 'list' });
+    const traffic = h('div', { className: 'list' });
 
     const el = h(
       'div',
@@ -47,12 +52,16 @@ export function registerStationPanel(host: PanelHost): void {
       coverage,
       h('h3', null, 'Lines'),
       linesList,
+      h('h3', null, 'Trains in station'),
+      docked,
       h('h3', null, t('waiting')),
       cargoList,
+      h('h3', null, 'Traffic (last month)'),
+      traffic,
     );
 
-    let coverageKey = '';
-    let linesKey = '';
+    let coverageKey = '\0';
+    let linesKey = '\0';
     const update = () => {
       const s = game.state;
       const rt = game.rt;
@@ -84,6 +93,17 @@ export function registerStationPanel(host: PanelHost): void {
         for (const l of lines) linesList.appendChild(h('div', { className: 'item clickable', onClick: () => game.select('line', l.id) }, h('span', { className: 'swatch', style: { background: lineColor(l.color) } }), l.name));
         if (lines.length === 0) linesList.appendChild(h('div', { className: 'muted' }, 'No line stops here yet.'));
       }
+      clear(docked);
+      for (const tr of dockedTrains(s, id)) docked.appendChild(h('div', { className: 'item clickable', onClick: () => game.select('train', tr.id) }, h('span', { className: 'grow' }, tr.name), h('span', { className: 'muted' }, stateText(tr.state))));
+      if (!docked.firstChild) docked.appendChild(h('div', { className: 'muted' }, 'None'));
+      clear(traffic);
+      for (let c = 0; c < CARGO_COUNT; c++) {
+        const up = st.pickedUpLastMonth[c] + st.pickedUpMonth[c];
+        const down = st.deliveredLastMonth[c] + st.deliveredMonth[c];
+        if (up + down <= 0) continue;
+        traffic.appendChild(h('div', { className: 'item' }, cargoIcon(c), h('span', { className: 'grow' }, CARGO[c].name), h('span', { className: 'muted', title: 'picked up' }, `↑ ${fmtInt(up)}`), h('span', { className: 'muted', title: 'delivered' }, `↓ ${fmtInt(down)}`)));
+      }
+      if (!traffic.firstChild) traffic.appendChild(h('div', { className: 'muted' }, 'No traffic yet'));
       clear(cargoList);
       const cap = pileCap(st);
       for (let c = 0; c < CARGO_COUNT; c++) {
@@ -95,7 +115,7 @@ export function registerStationPanel(host: PanelHost): void {
           h(
             'div',
             { className: 'item' },
-            h('span', { className: 'cargo-dot', style: { background: CARGO[c].color } }),
+            cargoIcon(c),
             h('span', { className: 'grow' }, `${CARGO[c].name} `, h('span', { className: 'muted' }, uniq ? `→ ${uniq}` : '')),
             h('span', { title: 'waiting / capacity' }, `${waiting}/${cap}`),
             h('span', { className: 'bar', title: 'rating', style: { maxWidth: '50px' } }, h('div', { style: { width: fmtPct(st.rating[c]), background: st.rating[c] < 0.35 ? '#e0483f' : st.rating[c] < 0.6 ? '#f2c14e' : '#6fcf6f' } })),

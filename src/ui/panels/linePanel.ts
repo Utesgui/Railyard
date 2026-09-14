@@ -4,6 +4,11 @@ import { LINE_COLORS } from '../../render/palette';
 import { button, clear, h, kv, row } from '../dom';
 import { fmtMoney } from '../format';
 import { t } from '../../i18n/t';
+import { barChart } from '../chart';
+import { cargoIcon } from '../icons';
+import { CARGO_COUNT, CARGO } from '../../data/cargo';
+import { fmtInt, fmtMoneyShort, fmtPct } from '../format';
+import { monthLabels } from './stats';
 import type { PanelHost } from './PanelHost';
 
 const lineColor = (i: number) => LINE_COLORS[i % LINE_COLORS.length];
@@ -69,6 +74,10 @@ export function registerLinePanels(host: PanelHost): void {
     const doneBtn = button('Done adding', () => game.setTool('inspect'), 'btn small');
     const revenue = h('span');
     const costs = h('span');
+    const net = h('span');
+    const loadEl = h('span');
+    const chartWrap = h('div');
+    const cargoList = h('div', { className: 'list' });
     const colors = h('div', { className: 'row' }, ...LINE_COLORS.map((c, i) => h('span', { className: 'swatch', style: { background: c, cursor: 'pointer', width: '14px', height: '14px' }, onClick: () => game.cmd.setLineColor(id, i) })));
     const el = h(
       'div',
@@ -97,8 +106,11 @@ export function registerLinePanels(host: PanelHost): void {
       trainsEl,
       row(button(t('buyTrain'), () => host.open('depot', id), 'btn small primary')),
       h('h3', null, t('lastMonth')),
-      kv(t('revenue'), revenue),
-      kv(t('costs'), costs),
+      h('div', { className: 'stat-grid' }, kv(t('revenue'), revenue), kv(t('costs'), costs), kv(t('profit'), net), kv('Avg. load', loadEl)),
+      h('h3', null, 'Profit, last 12 months'),
+      chartWrap,
+      h('h3', null, 'Cargo delivered (last month)'),
+      cargoList,
     );
     let stopsKey = '';
     let trainsKey = '';
@@ -157,6 +169,28 @@ export function registerLinePanels(host: PanelHost): void {
       }
       revenue.textContent = fmtMoney(line.revenueLastMonth);
       costs.textContent = fmtMoney(line.costLastMonth);
+      const n = line.revenueLastMonth - line.costLastMonth;
+      net.textContent = fmtMoney(n);
+      net.className = n >= 0 ? 'v good' : 'v warn';
+      const loads = trains.filter((x) => x.loadCount > 0 || x.loadFactorLastMonth > 0).map((x) => x.loadFactorLastMonth);
+      loadEl.textContent = loads.length ? fmtPct(loads.reduce((a, b) => a + b, 0) / loads.length) : '–';
+      const hk = line.profitHistory.join(',');
+      if (chartWrap.dataset.key !== hk) {
+        chartWrap.dataset.key = hk;
+        clear(chartWrap);
+        chartWrap.appendChild(barChart([...line.profitHistory].reverse(), { format: fmtMoneyShort, labels: monthLabels(s, line.profitHistory.length) }));
+      }
+      const ck = line.cargoLastMonth.join(',') + '|' + line.cargoMonth.join(',');
+      if (cargoList.dataset.key !== ck) {
+        cargoList.dataset.key = ck;
+        clear(cargoList);
+        for (let c = 0; c < CARGO_COUNT; c++) {
+          const v = line.cargoLastMonth[c];
+          if (v <= 0) continue;
+          cargoList.appendChild(h('div', { className: 'item' }, cargoIcon(c), h('span', { className: 'grow' }, CARGO[c].name), fmtInt(v)));
+        }
+        if (!cargoList.firstChild) cargoList.appendChild(h('div', { className: 'muted' }, 'Nothing delivered last month'));
+      }
     };
     update();
     return { el, update };

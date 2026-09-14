@@ -16,6 +16,23 @@ describe('save codec', () => {
     expect(back.state.industries).toEqual(s.industries);
   });
 
+  it('migrates a schema-1 save', () => {
+    const s = generateWorld(5);
+    const json = encodeState(s, 'old');
+    const file = JSON.parse(json);
+    file.schema = 1;
+    const st = file.state;
+    st.schema = 1;
+    delete st.economy.startMoney;
+    delete st.tutorialStep;
+    delete st.stats.trainsBought;
+    const back = decodeState(JSON.stringify(file)).state;
+    expect(back.schema).toBe(2);
+    expect(back.economy.startMoney).toBe(500_000);
+    expect(back.tutorialStep).toBe(-1);
+    expect(back.stats.trainsBought).toBe(0);
+  });
+
   it('rejects garbage', () => {
     expect(() => decodeState('{"nope":1}')).toThrow();
     expect(() => decodeState('not json')).toThrow();

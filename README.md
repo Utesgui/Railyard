@@ -15,8 +15,9 @@ npm run dev          # http://localhost:5173  (add ?seed=1234 for a specific map
 ```
 
 Build a line in four steps: **T** lay track (click start, click end – the route is planned for you,
-bridges and tunnels included), **S** place stations within 3 tiles of towns or industries, **L**
-create a line and click stations to add stops, **V** buy a locomotive with matching wagons.
+bridges and tunnels included; middle-click adds waypoints to steer it), **S** place stations within
+3 tiles of towns or industries, **L** create a line and click stations to add stops, **V** buy a
+locomotive with matching wagons. A short tutorial walks you through it on a new game.
 
 | Key | Action |
 |---|---|
@@ -24,7 +25,8 @@ create a line and click stations to add stops, **V** buy a locomotive with match
 | T / S / X | Track / Station / Demolish tool |
 | L / V / F / O | Lines / Vehicles / Finances / Settings |
 | Arrows, wheel, right-drag | Pan, zoom, pan |
-| Esc | Cancel tool / close panel |
+| Middle-click | Add a waypoint while laying track |
+| Esc | Cancel tool / close panel / close dialog |
 | Ctrl+S / Ctrl+L | Quick save / quick load |
 
 ## How it works
@@ -38,6 +40,8 @@ create a line and click stations to add stops, **V** buy a locomotive with match
 - **Traffic**: trains reserve the track ahead of them and lock single-track sections by direction;
   add platforms or passing loops where trains queue.
 - **Eras**: steam (1900), diesel (1935), electric (1965) locomotives with different speed, power and cost.
+- **Progress**: yearly report, achievements, 12-month profit charts per line and train, station traffic
+  statistics, configurable start money and UI size in the settings.
 
 ## Develop
 

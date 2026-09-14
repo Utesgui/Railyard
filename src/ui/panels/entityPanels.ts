@@ -5,11 +5,9 @@ import { monthlyProduction } from '../../sim/industry';
 import { button, clear, h, kv, row } from '../dom';
 import { fmtInt } from '../format';
 import { t } from '../../i18n/t';
+import { cargoTag } from '../icons';
 import type { PanelHost } from './PanelHost';
 
-function cargoTag(c: number): HTMLElement {
-  return h('span', { className: 'cargo-tag' }, h('span', { className: 'cargo-dot', style: { background: CARGO[c].color } }), CARGO[c].name);
-}
 
 export function registerEntityPanels(host: PanelHost): void {
   host.register('industry', (game: Game, host, id) => {
@@ -43,7 +41,7 @@ export function registerEntityPanels(host: PanelHost): void {
       stations,
       h('div', { className: 'muted', style: { marginTop: '8px' } }, isRawIndustry(type) ? 'Transport at least 60% of the output regularly and production will grow. Ignore it for a year and it shrinks.' : 'Deliver inputs by train; output appears at stations in range.'),
     );
-    let stKey = '';
+    let stKey = '\0';
     const update = () => {
       level.textContent = isRawIndustry(type) ? `${ind.level} (${fmtInt(monthlyProduction(ind))} / month)` : `${ind.level}`;
       prodThis.textContent = fmtInt(ind.producedMonth);
@@ -86,7 +84,7 @@ export function registerEntityPanels(host: PanelHost): void {
       stations,
       h('div', { className: 'muted', style: { marginTop: '8px' } }, 'Towns grow with good passenger and mail service and with deliveries of planks, goods, food and fuel.'),
     );
-    let stKey = '';
+    let stKey = '\0';
     const update = () => {
       pop.textContent = fmtInt(town.population);
       growth.textContent = `${Math.round(town.growthPoints)} / ${Math.round(6 + town.population / 250)} pts`;

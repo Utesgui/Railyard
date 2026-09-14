@@ -3,6 +3,7 @@ import type { GameState } from '../core/types';
 import { Camera } from '../render/camera';
 import { Minimap } from '../render/minimap';
 import { Renderer } from '../render/renderer';
+import { Floaters } from '../render/dynamicLayer';
 import { tick } from '../sim/tick';
 import { newUIState, type SelectionKind, type ToolName, type UIState } from '../ui/uiState';
 import { generateWorld } from '../world/gen/generate';
@@ -24,6 +25,7 @@ export class Game {
   readonly ui: UIState = newUIState();
   readonly cmd: Commands;
   readonly loop: Loop;
+  readonly floaters = new Floaters();
   /** called at ~10 Hz by the loop for DOM refresh */
   uiUpdate: () => void = () => {};
   private monthsSinceAutosave = 0;
@@ -47,11 +49,12 @@ export class Game {
       this.minimap.invalidate();
     });
     this.events.on('month', () => this.maybeAutosave());
+    this.events.on('floater', (f) => this.floaters.add(f.tile, MAP_W, f.text, f.color));
     window.addEventListener('resize', () => this.renderer.resize());
   }
 
-  newGame(seed: number): void {
-    this.setState(generateWorld(seed));
+  newGame(seed: number, startMoney?: number): void {
+    this.setState(generateWorld(seed, { startMoney }));
     const town = this.state.towns[0];
     if (town) this.cam.centerOnTile(town.y * MAP_W + town.x);
     notify(this.state, this.events, 'info', `Welcome to Railyard. Seed ${seed}. Build track (T), place stations (S), create a line (L) and buy a train (V).`, undefined, false);
@@ -74,6 +77,7 @@ export class Game {
     this.ui.selection = { kind: 'none', id: -1 };
     this.ui.editingLine = -1;
     this.ui.trackAnchor = -1;
+    this.ui.trackWaypoints = [];
     this.ui.trackPreview = null;
     this.monthsSinceAutosave = 0;
     this.events.emit('stateReplaced');
@@ -90,7 +94,7 @@ export class Game {
   }
 
   render(alpha: number): void {
-    this.renderer.draw(this.state, this.rt, this.ui, alpha);
+    this.renderer.draw(this.state, this.rt, this.ui, alpha, this.floaters);
     this.minimap.draw(this.state, this.rt, this.cam);
   }
 
@@ -103,6 +107,7 @@ export class Game {
     if (this.ui.tool === tool) return;
     this.ui.tool = tool;
     this.ui.trackAnchor = -1;
+    this.ui.trackWaypoints = [];
     this.ui.trackPreview = null;
     this.ui.stationHover = -1;
     this.ui.demolishEdge = null;

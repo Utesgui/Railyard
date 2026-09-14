@@ -3,7 +3,10 @@ import { TILE_PX } from '../core/constants';
 import { DIR_DX, DIR_DY } from '../core/grid';
 import { Terrain, type GameState } from '../core/types';
 import type { Camera } from './camera';
-import { COLORS } from './palette';
+import { COLORS, LINE_COLORS } from './palette';
+import { CARGO } from '../data/cargo';
+import { LOCOS } from '../data/vehicles';
+import { dockedTrains } from '../sim/train/geometry';
 
 /** Tracks and stations are drawn as vectors every frame so they stay crisp at any zoom. */
 export function drawTracks(ctx: CanvasRenderingContext2D, cam: Camera, state: GameState, rt: Runtime): void {
@@ -130,13 +133,31 @@ export function drawTracks(ctx: CanvasRenderingContext2D, cam: Camera, state: Ga
     ctx.strokeStyle = COLORS.stationBorder;
     ctx.lineWidth = 2;
     ctx.strokeRect(px + 4, py + 4, 24, 24);
-    // platform pips
-    ctx.fillStyle = '#444';
-    for (let i = 0; i < st.platforms; i++) ctx.fillRect(px + 8 + i * 5, py + 22, 3, 3);
-    const slots = rt.stationSlots.get(st.id);
-    if (slots) {
-      ctx.fillStyle = '#e0483f';
-      for (let i = 0; i < slots.length; i++) if (slots[i] >= 0) ctx.fillRect(px + 8 + i * 5, py + 22, 3, 3);
+    // platform rows with docked trains drawn as miniature consists
+    const docked = dockedTrains(state, st.id);
+    for (let row = 0; row < st.platforms; row++) {
+      const y = py + 7 + row * 5;
+      ctx.fillStyle = '#d8d8d8';
+      ctx.fillRect(px + 7, y + 1, 18, 1.5);
     }
+    docked.forEach((train, i) => {
+      const row = Math.min(st.platforms - 1, i);
+      const y = py + 7 + row * 5;
+      const line = rt.lineById.get(train.lineId);
+      const x0 = px + 7;
+      ctx.fillStyle = LOCOS[train.loco]?.color ?? '#333';
+      ctx.fillRect(x0, y, 5, 3);
+      ctx.fillStyle = line ? LINE_COLORS[line.color % LINE_COLORS.length] : '#888';
+      ctx.fillRect(x0 + 0.5, y + 0.5, 4, 1.2);
+      const n = train.wagons.length;
+      if (n > 0) {
+        const cw = Math.min(3, (13 - (n - 1) * 0.5) / n);
+        for (let k = 0; k < n; k++) {
+          const wg = train.wagons[k];
+          ctx.fillStyle = wg.cargo >= 0 && wg.amount > 0 ? CARGO[wg.cargo].color : COLORS.wagonEmpty;
+          ctx.fillRect(x0 + 5.5 + k * (cw + 0.5), y, cw, 3);
+        }
+      }
+    });
   }
 }

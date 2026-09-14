@@ -1,4 +1,4 @@
-import { DIR_LEN, neighbor, octileT } from '../core/grid';
+import { DIR_LEN, dirBetween, neighbor, octileT } from '../core/grid';
 import type { Dir, World } from '../core/types';
 import { B } from '../data/balance';
 import { Occ, isSpecialTerrain } from '../world/terrain';
@@ -30,7 +30,7 @@ export function isBuildEndpoint(world: World, occ: Uint8Array, t: number): boole
  * A* over terrain from `from` to `to`, respecting the 45°-per-tile turn rule,
  * reusing existing track cheaply and obeying all canAddEdge rules.
  */
-export function buildRoute(world: World, occ: Uint8Array, from: number, to: number, scratch: AStarScratch): BuildPreview {
+export function buildRoute(world: World, occ: Uint8Array, from: number, to: number, scratch: AStarScratch, startDir?: Dir): BuildPreview {
   const out: BuildPreview = { ok: false, nodes: [], newEdges: 0, cost: 0 };
   if (from === to) {
     out.reason = 'same tile';
@@ -45,10 +45,8 @@ export function buildRoute(world: World, occ: Uint8Array, from: number, to: numb
   const terrain = world.terrain;
   const aCost = B.trackAStarCost;
   scratch.begin();
-  for (let d = 0; d < 8; d++) {
-    const s = from * 8 + d;
-    scratch.open(s, 0, -1, octileT(from, to, w) * HEURISTIC_WEIGHT);
-  }
+  if (startDir !== undefined) scratch.open(from * 8 + startDir, 0, -1, octileT(from, to, w) * HEURISTIC_WEIGHT);
+  else for (let d = 0; d < 8; d++) scratch.open(from * 8 + d, 0, -1, octileT(from, to, w) * HEURISTIC_WEIGHT);
   const heap = scratch.heap;
   let goalState = -1;
   while (heap.size > 0) {
@@ -94,6 +92,28 @@ export function buildRoute(world: World, occ: Uint8Array, from: number, to: numb
   out.newEdges = res.newEdges;
   if (!res.ok) out.reason = 'invalid route';
   return out;
+}
+
+/**
+ * Route through a sequence of points (anchor, waypoints..., target). Each leg continues in the
+ * direction the previous leg arrived with, so joins never bend more than 45°.
+ */
+export function buildRouteVia(world: World, occ: Uint8Array, points: number[], scratch: AStarScratch): BuildPreview {
+  if (points.length < 2) return { ok: false, nodes: [], newEdges: 0, cost: 0, reason: 'too short' };
+  if (points.length === 2) return buildRoute(world, occ, points[0], points[1], scratch);
+  const w = world.width;
+  const nodes: number[] = [];
+  let dir: Dir | undefined;
+  for (let i = 0; i + 1 < points.length; i++) {
+    const leg = buildRoute(world, occ, points[i], points[i + 1], scratch, dir);
+    if (!leg.ok) return { ok: false, nodes: [], newEdges: 0, cost: 0, reason: i > 0 && leg.reason === 'no route' ? 'sharp bend at waypoint' : leg.reason };
+    if (i === 0) nodes.push(...leg.nodes);
+    else nodes.push(...leg.nodes.slice(1));
+    const n = leg.nodes.length;
+    dir = dirBetween(leg.nodes[n - 2], leg.nodes[n - 1], w);
+  }
+  const priced = priceRoute(world, occ, nodes);
+  return { ok: priced.ok, nodes: priced.ok ? nodes : [], newEdges: priced.newEdges, cost: priced.cost, reason: priced.ok ? undefined : 'invalid route' };
 }
 
 /** Apply the route's edges to a temporary copy to validate, summing cost of new edges. */

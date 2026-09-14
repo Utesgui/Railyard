@@ -15,6 +15,8 @@ export interface UIState {
   tool: ToolName;
   /** track tool: anchor tile or -1 */
   trackAnchor: number;
+  /** intermediate points set with the middle mouse button */
+  trackWaypoints: number[];
   trackPreview: BuildPreview | null;
   /** station tool: hovered tile and whether it is valid */
   stationHover: number;
@@ -36,6 +38,7 @@ export function newUIState(): UIState {
     hoverTile: -1,
     tool: 'inspect',
     trackAnchor: -1,
+    trackWaypoints: [],
     trackPreview: null,
     stationHover: -1,
     stationHoverOk: false,

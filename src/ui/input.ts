@@ -22,8 +22,10 @@ export function installInput(game: Game, hooks: InputHooks): void {
   const held = new Set<string>();
 
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('auxclick', (e) => e.preventDefault());
 
   canvas.addEventListener('pointerdown', (e) => {
+    if (e.button === 1) e.preventDefault(); // no browser autoscroll
     canvas.setPointerCapture(e.pointerId);
     downX = lastX = e.clientX;
     downY = lastY = e.clientY;
@@ -65,6 +67,7 @@ export function installInput(game: Game, hooks: InputHooks): void {
     if (!dragged) {
       if (button === 0) hooks.tools[game.ui.tool].onClick(tile, e, wx, wy);
       else if (button === 2) hooks.tools[game.ui.tool].onCancel();
+      else if (button === 1) hooks.tools[game.ui.tool].onMiddleClick?.(tile);
     }
     panning = false;
   };

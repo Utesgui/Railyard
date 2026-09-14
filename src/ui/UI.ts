@@ -9,14 +9,17 @@ import { PanelHost } from './panels/PanelHost';
 import { registerEntityPanels } from './panels/entityPanels';
 import { registerLinePanels } from './panels/linePanel';
 import { registerStationPanel } from './panels/stationPanel';
-import { registerSystemPanels } from './panels/systemPanels';
+import { applyUiScale, registerSystemPanels } from './panels/systemPanels';
+import { getSetting } from '../save/storage';
 import { registerTrainPanels } from './panels/trainPanel';
 import { createTools } from './tools';
 import type { SelectionKind, ToolName } from './uiState';
+import { closeDialog, isDialogOpen, showAchievements, showGameOver, showYearSummary } from './dialogs';
+import { dismissTutorial, tutorialText } from './tutorial';
 
 const HINTS: Record<ToolName, string> = {
   inspect: '',
-  track: 'Click a start tile, then click the end tile to build the routed track. Shift+click keeps building. Right-click / Esc cancels.',
+  track: 'Click a start tile, then the end tile to build the routed track. Middle-click adds waypoints to steer the route. Shift+click keeps building. Right-click / Esc steps back.',
   station: 'Click a free tile within 3 tiles of a town or industry. Right-click / Esc cancels.',
   demolish: 'Click a piece of track or a station to remove it (25% refund).',
   line: 'Click stations on the map to add them as stops. Esc when done.',
@@ -48,6 +51,7 @@ export class UI {
     this.tooltip = document.getElementById('tooltip')!;
     this.hint = document.getElementById('hint')!;
     void hud;
+    applyUiScale(getSetting<number>('uiScale', 1));
 
     const tools = createTools(game, {
       toast: (kind, text) => game.events.emit('notify', { day: 0, kind, text }),
@@ -63,10 +67,20 @@ export class UI {
     game.events.on('selection', () => this.onSelection());
     game.events.on('toolChanged', (tool) => {
       game.canvas.className = tool === 'inspect' ? '' : `tool-${tool}`;
-      this.hint.hidden = !HINTS[tool as ToolName];
-      this.hint.textContent = HINTS[tool as ToolName];
+      this.refreshHint();
       this.toolbar.update();
     });
+    this.hint.addEventListener('click', () => {
+      if (this.hint.classList.contains('tutorial')) {
+        dismissTutorial(game);
+        this.refreshHint();
+      }
+    });
+    game.events.on('year', () => {
+      if (game.state.tick > 0) showYearSummary(game);
+    });
+    game.events.on('gameOver', () => showGameOver(game, () => this.panels.open('settings')));
+    (window as unknown as { __showAchievements: () => void }).__showAchievements = () => showAchievements(game);
     game.events.on('stateReplaced', () => {
       this.panels.close();
       game.setTool('inspect');
@@ -97,6 +111,22 @@ export class UI {
     this.panels.open(sel.kind, sel.id);
   }
 
+  private refreshHint(): void {
+    const g = this.game;
+    const toolHint = HINTS[g.ui.tool];
+    if (toolHint) {
+      this.hint.hidden = false;
+      this.hint.className = '';
+      this.hint.textContent = toolHint;
+      return;
+    }
+    const tut = tutorialText(g);
+    this.hint.hidden = !tut;
+    this.hint.className = tut ? 'tutorial' : '';
+    this.hint.textContent = tut;
+    this.hint.title = tut ? 'Click to dismiss the tutorial' : '';
+  }
+
   private showTooltip(tile: number, sx: number, sy: number): void {
     const g = this.game;
     if (tile < 0 || g.ui.tool !== 'inspect' || g.ui.hoverTile < 0) {
@@ -114,8 +144,9 @@ export class UI {
     else text = TERRAIN_NAMES[g.state.world.terrain[tile]];
     this.tooltip.textContent = text;
     this.tooltip.hidden = false;
-    this.tooltip.style.left = `${sx + 14}px`;
-    this.tooltip.style.top = `${sy + 14}px`;
+    const scale = getSetting<number>('uiScale', 1);
+    this.tooltip.style.left = `${(sx + 14) / scale}px`;
+    this.tooltip.style.top = `${(sy + 14) / scale}px`;
   }
 
   private onKey(ev: KeyboardEvent, tools: ReturnType<typeof createTools>): boolean {
@@ -180,7 +211,8 @@ export class UI {
         g.cam.zoomStep(g.cam.vw / 2, g.cam.vh / 2, -1);
         return true;
       case 'escape':
-        if (g.ui.tool !== 'inspect') tools[g.ui.tool].onCancel();
+        if (isDialogOpen()) closeDialog();
+        else if (g.ui.tool !== 'inspect') tools[g.ui.tool].onCancel();
         else if (this.panels.current) {
           this.panels.close();
           g.select('none', -1);
@@ -195,6 +227,7 @@ export class UI {
     this.topbar.update();
     this.toolbar.update();
     this.panels.update();
+    if (this.game.ui.tool === 'inspect') this.refreshHint();
   }
 
   static mount(): HTMLElement {

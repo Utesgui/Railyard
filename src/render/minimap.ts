@@ -3,7 +3,7 @@ import { TILE_PX } from '../core/constants';
 import { DIR_DX, DIR_DY } from '../core/grid';
 import type { GameState } from '../core/types';
 import type { Camera } from './camera';
-import { TERRAIN_COLORS } from './palette';
+import { LINE_COLORS, TERRAIN_COLORS } from './palette';
 
 const PX = 2; // pixels per tile
 
@@ -46,7 +46,6 @@ export class Minimap {
   draw(state: GameState, rt: Runtime, cam: Camera, force = false): void {
     this.frame++;
     if (!force && this.frame % 10 !== 0) return;
-    void rt;
     if (!this.terrainBake) this.terrainBake = this.bake(state);
     const g = this.canvas.getContext('2d')!;
     g.setTransform(1, 0, 0, 1, 0, 0);
@@ -68,6 +67,22 @@ export class Minimap {
       }
     }
     g.stroke();
+    // line legs
+    g.lineWidth = 1;
+    for (const line of state.lines) {
+      if (line.stops.length < 2) continue;
+      g.strokeStyle = LINE_COLORS[line.color % LINE_COLORS.length];
+      g.beginPath();
+      line.stops.forEach((stop, i) => {
+        const st = rt.stationById.get(stop.stationId);
+        if (!st) return;
+        const x = (st.tile % w) * PX + PX / 2;
+        const y = ((st.tile / w) | 0) * PX + PX / 2;
+        if (i === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      });
+      g.stroke();
+    }
     g.fillStyle = '#ffffff';
     for (const st of state.stations) g.fillRect((st.tile % w) * PX - 1, ((st.tile / w) | 0) * PX - 1, PX + 2, PX + 2);
     // viewport

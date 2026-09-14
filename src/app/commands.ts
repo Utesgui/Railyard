@@ -373,6 +373,7 @@ export class Commands {
     placeInStation(this.rt, train, first);
     train.stopIndex = 0;
     spend(s, cost, 'vehicles');
+    s.stats.trainsBought++;
     // load at the first stop right away, then run the line
     startDwellAt(s, this.rt, train, first, this.ev);
     notify(s, this.ev, 'info', `${train.name} bought for ${line.name}`, first.tile, false);

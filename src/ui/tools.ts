@@ -3,7 +3,7 @@ import { TILE_PX } from '../core/constants';
 import { DIR_DX, DIR_DY } from '../core/grid';
 import type { Dir } from '../core/types';
 import { hitTestTrain } from '../render/dynamicLayer';
-import { buildRoute } from '../track/buildRoute';
+import { buildRouteVia, isBuildEndpoint } from '../track/buildRoute';
 import { hasEdge } from '../track/graph';
 import type { ToolName } from './uiState';
 
@@ -11,6 +11,7 @@ export interface Tool {
   onClick(tile: number, ev: PointerEvent, wx: number, wy: number): void;
   onMove(tile: number, wx: number, wy: number): void;
   onCancel(): void;
+  onMiddleClick?(tile: number): void;
 }
 
 export interface ToolHost {
@@ -44,21 +45,23 @@ export function createTools(game: Game, host: ToolHost): Record<ToolName, Tool> 
   };
 
   let lastPreviewTile = -1;
+  const preview = (tile: number) => buildRouteVia(game.state.world, game.rt.tileOcc, [ui.trackAnchor, ...ui.trackWaypoints, tile], game.rt.astar);
   const track: Tool = {
     onClick(tile, ev) {
       if (tile < 0) return;
       if (ui.trackAnchor < 0) {
         ui.trackAnchor = tile;
+        ui.trackWaypoints = [];
         ui.trackPreview = null;
         lastPreviewTile = -1;
         return;
       }
-      if (tile === ui.trackAnchor) {
+      if (tile === ui.trackAnchor && ui.trackWaypoints.length === 0) {
         ui.trackAnchor = -1;
         ui.trackPreview = null;
         return;
       }
-      const pv = ui.trackPreview && lastPreviewTile === tile ? ui.trackPreview : buildRoute(game.state.world, game.rt.tileOcc, ui.trackAnchor, tile, game.rt.astar);
+      const pv = ui.trackPreview && lastPreviewTile === tile ? ui.trackPreview : preview(tile);
       if (!pv.ok) {
         host.toast('warn', pv.reason ?? 'cannot build here');
         return;
@@ -69,17 +72,31 @@ export function createTools(game: Game, host: ToolHost): Record<ToolName, Tool> 
         return;
       }
       ui.trackAnchor = ev.shiftKey ? tile : -1;
+      ui.trackWaypoints = [];
       ui.trackPreview = null;
       lastPreviewTile = -1;
+    },
+    onMiddleClick(tile) {
+      if (tile < 0 || ui.trackAnchor < 0) return;
+      if (!isBuildEndpoint(game.state.world, game.rt.tileOcc, tile)) return host.toast('warn', 'waypoint must be on free land');
+      const last = ui.trackWaypoints[ui.trackWaypoints.length - 1] ?? ui.trackAnchor;
+      if (tile === last) return;
+      ui.trackWaypoints.push(tile);
+      lastPreviewTile = -1;
+      ui.trackPreview = null;
     },
     onMove(tile) {
       if (ui.trackAnchor < 0 || tile < 0) return;
       if (tile === lastPreviewTile) return;
       lastPreviewTile = tile;
-      ui.trackPreview = tile === ui.trackAnchor ? null : buildRoute(game.state.world, game.rt.tileOcc, ui.trackAnchor, tile, game.rt.astar);
+      ui.trackPreview = tile === ui.trackAnchor && ui.trackWaypoints.length === 0 ? null : preview(tile);
     },
     onCancel() {
-      if (ui.trackAnchor >= 0) {
+      if (ui.trackWaypoints.length > 0) {
+        ui.trackWaypoints.pop();
+        lastPreviewTile = -1;
+        ui.trackPreview = null;
+      } else if (ui.trackAnchor >= 0) {
         ui.trackAnchor = -1;
         ui.trackPreview = null;
       } else game.setTool('inspect');

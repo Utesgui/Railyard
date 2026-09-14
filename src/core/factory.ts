@@ -29,6 +29,10 @@ export function newStation(id: number, name: string, tile: number, builtDay: num
     lastPickupSpeed: new Array(CARGO_COUNT).fill(0),
     seen: new Array(CARGO_COUNT).fill(false),
     builtDay,
+    pickedUpMonth: new Array(CARGO_COUNT).fill(0),
+    pickedUpLastMonth: new Array(CARGO_COUNT).fill(0),
+    deliveredMonth: new Array(CARGO_COUNT).fill(0),
+    deliveredLastMonth: new Array(CARGO_COUNT).fill(0),
   };
 }
 
@@ -43,6 +47,9 @@ export function newLine(id: number, name: string, color: number): Line {
     costMonth: 0,
     revenueLastMonth: 0,
     costLastMonth: 0,
+    profitHistory: [],
+    cargoMonth: new Array(CARGO_COUNT).fill(0),
+    cargoLastMonth: new Array(CARGO_COUNT).fill(0),
   };
 }
 
@@ -80,5 +87,11 @@ export function newTrain(id: number, name: string, lineId: number, loco: number,
     profitMonth: 0,
     profitLastMonth: 0,
     profitYear: 0,
+    profitHistory: [],
+    deliveredTotal: 0,
+    distanceTotal: 0,
+    loadSum: 0,
+    loadCount: 0,
+    loadFactorLastMonth: 0,
   };
 }

@@ -7,6 +7,7 @@ import { B } from '../data/balance';
 import { totalMaintenance } from '../track/graph';
 import { ledgerNet, rollLedger, spend } from './economy';
 import { newVehiclesIn } from './eras';
+import { checkAchievements } from './achievements';
 import { monthEndIndustries, type IndustryEvent } from './industry';
 import { notify } from './notify';
 import { stepIndustriesDaily } from './industry';
@@ -52,13 +53,28 @@ export function monthEnd(state: GameState, rt: Runtime, ev: Events | null): void
   for (const train of state.trains) {
     train.profitLastMonth = train.profitMonth;
     train.profitYear += train.profitMonth;
+    train.profitHistory.unshift(train.profitMonth);
+    if (train.profitHistory.length > 12) train.profitHistory.length = 12;
     train.profitMonth = 0;
+    train.loadFactorLastMonth = train.loadCount > 0 ? train.loadSum / train.loadCount : 0;
+    train.loadSum = 0;
+    train.loadCount = 0;
   }
   for (const line of state.lines) {
     line.revenueLastMonth = line.revenueMonth;
     line.costLastMonth = line.costMonth;
+    line.profitHistory.unshift(line.revenueMonth - line.costMonth);
+    if (line.profitHistory.length > 12) line.profitHistory.length = 12;
     line.revenueMonth = 0;
     line.costMonth = 0;
+    line.cargoLastMonth = line.cargoMonth;
+    line.cargoMonth = new Array(line.cargoMonth.length).fill(0);
+  }
+  for (const st of state.stations) {
+    st.pickedUpLastMonth = st.pickedUpMonth;
+    st.pickedUpMonth = new Array(st.pickedUpMonth.length).fill(0);
+    st.deliveredLastMonth = st.deliveredMonth;
+    st.deliveredMonth = new Array(st.deliveredMonth.length).fill(0);
   }
   const indEvents: IndustryEvent[] = [];
   monthEndIndustries(state, indEvents);
@@ -71,15 +87,18 @@ export function monthEnd(state: GameState, rt: Runtime, ev: Events | null): void
   monthEndTowns(state, rt, townEvents);
   for (const e of townEvents) ev?.emit('tileChanged', e.town.tiles[e.town.tiles.length - 1]);
 
+  checkAchievements(state, rt, ev);
+
   // bankruptcy watch
   if (state.economy.money < -B.loanMax) {
     state.economy.monthsInsolvent++;
     const left = B.bankruptMonths - state.economy.monthsInsolvent;
     if (left > 0) notify(state, ev, 'warn', `Insolvent! ${left} month${left === 1 ? '' : 's'} until bankruptcy.`);
     else {
-      notify(state, ev, 'warn', 'Bankrupt. The company has been liquidated. Load a save or start a new game.');
+      notify(state, ev, 'warn', 'Bankrupt. The company has been liquidated.');
       state.speed = 0;
       ev?.emit('speedChanged');
+      ev?.emit('gameOver');
     }
   } else state.economy.monthsInsolvent = 0;
 

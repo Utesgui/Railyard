@@ -6,9 +6,20 @@ import { CARGO } from '../../data/cargo';
 import { ledgerNet, ledgerTotalCosts, ledgerTotalRevenue } from '../../sim/economy';
 import { SLOTS, deleteSlot, exportToFile, getSetting, importFromFile, loadFromSlot, saveToSlot, setSetting, slotInfo } from '../../save/storage';
 import { button, clear, h, kv, row } from '../dom';
-import { fmtMoney } from '../format';
+import { fmtMoney, fmtMoneyShort } from '../format';
+import { barChart } from '../chart';
+import { monthLabels } from './stats';
 import { t } from '../../i18n/t';
+import { showAchievements } from '../dialogs';
+import { ACHIEVEMENTS } from '../../sim/achievements';
+import { cargoIcon } from '../icons';
 import type { PanelHost } from './PanelHost';
+
+/** Scale the whole HUD (panels, bars, toasts); the map canvas is unaffected. */
+export function applyUiScale(scale: number): void {
+  const hud = document.getElementById('hud');
+  if (hud) (hud.style as unknown as { zoom: string }).zoom = String(scale);
+}
 
 export function registerSystemPanels(host: PanelHost): void {
   host.register('finances', (game: Game, host) => {
@@ -17,6 +28,7 @@ export function registerSystemPanels(host: PanelHost): void {
     const table = h('table');
     const lines = h('div', { className: 'list' });
     const cargoRev = h('div', { className: 'list' });
+    const chartWrap = h('div');
     const el = h(
       'div',
       null,
@@ -28,6 +40,8 @@ export function registerSystemPanels(host: PanelHost): void {
         button(`Repay ${fmtMoney(B.loanStep)}`, () => game.cmd.repayLoan(), 'btn small'),
         h('span', { className: 'muted' }, `${Math.round(B.loanRateYearly * 100)}% / year`),
       ),
+      h('h3', null, 'Net result, last 12 months'),
+      chartWrap,
       h('h3', null, 'Monthly summary'),
       h('div', { style: { overflowX: 'auto' } }, table),
       h('h3', null, 'Revenue by cargo (this month)'),
@@ -39,6 +53,13 @@ export function registerSystemPanels(host: PanelHost): void {
       const s = game.state;
       money.textContent = fmtMoney(s.economy.money);
       loan.textContent = fmtMoney(s.economy.loan);
+      const hist = s.economy.ledger.slice(1, 13).map(ledgerNet);
+      const hk = hist.join(',');
+      if (chartWrap.dataset.key !== hk) {
+        chartWrap.dataset.key = hk;
+        clear(chartWrap);
+        chartWrap.appendChild(barChart([...hist].reverse(), { format: fmtMoneyShort, labels: monthLabels(s, hist.length), emptyText: 'The first month is still running' }));
+      }
       clear(table);
       table.appendChild(h('tr', null, h('th', null, 'Month'), h('th', null, 'Revenue'), h('th', null, 'Costs'), h('th', null, 'Net')));
       s.economy.ledger.slice(0, 12).forEach((l, i) => {
@@ -48,7 +69,7 @@ export function registerSystemPanels(host: PanelHost): void {
       clear(cargoRev);
       const cur = s.economy.ledger[0];
       cur.revenue.forEach((v, c) => {
-        if (v > 0) cargoRev.appendChild(h('div', { className: 'item' }, h('span', { className: 'cargo-dot', style: { background: CARGO[c].color } }), h('span', { className: 'grow' }, CARGO[c].name), fmtMoney(v)));
+        if (v > 0) cargoRev.appendChild(h('div', { className: 'item' }, cargoIcon(c), h('span', { className: 'grow' }, CARGO[c].name), fmtMoney(v)));
       });
       if (!cargoRev.firstChild) cargoRev.appendChild(h('div', { className: 'muted' }, 'No revenue yet this month'));
       clear(lines);
@@ -63,6 +84,18 @@ export function registerSystemPanels(host: PanelHost): void {
 
   host.register('settings', (game: Game, host) => {
     const seedInput = h('input', { type: 'text', value: String(game.state.world.seed), placeholder: 'seed' });
+    const moneySel = h('select');
+    for (const [v, label] of [[250_000, '$250k – tight'], [500_000, '$500k – standard'], [1_000_000, '$1M – relaxed'], [2_000_000, '$2M – easy'], [10_000_000, '$10M – sandbox']] as [number, string][]) {
+      const opt = h('option', { value: String(v) }, label);
+      if (v === getSetting<number>('startMoney', 500_000)) opt.selected = true;
+      moneySel.appendChild(opt);
+    }
+    const scaleSel = h('select', { onChange: () => { setSetting('uiScale', Number(scaleSel.value)); applyUiScale(Number(scaleSel.value)); } });
+    for (const v of [0.8, 0.9, 1, 1.1, 1.25, 1.5]) {
+      const opt = h('option', { value: String(v) }, `${Math.round(v * 100)}%`);
+      if (v === getSetting<number>('uiScale', 1)) opt.selected = true;
+      scaleSel.appendChild(opt);
+    }
     const slotsEl = h('div', { className: 'list' });
     const renderSlots = () => {
       clear(slotsEl);
@@ -106,11 +139,13 @@ export function registerSystemPanels(host: PanelHost): void {
       null,
       host.header(t('toolSettings')),
       h('h3', null, t('newGame')),
-      row(seedInput, button('Random', () => (seedInput.value = String((Math.random() * 0xffffffff) >>> 0)), 'btn small')),
+      row(h('span', { className: 'muted' }, t('seed') + ' '), seedInput, button('Random', () => (seedInput.value = String((Math.random() * 0xffffffff) >>> 0)), 'btn small')),
+      row(h('span', { className: 'muted' }, 'Start money '), moneySel),
       row(
         button(t('newGame'), () => {
           if (!confirm('Start a new game? Unsaved progress is lost.')) return;
-          game.newGame(seedFromString(seedInput.value || '1'));
+          setSetting('startMoney', Number(moneySel.value));
+          game.newGame(seedFromString(seedInput.value || '1'), Number(moneySel.value));
           host.close();
         }, 'btn primary'),
       ),
@@ -119,7 +154,10 @@ export function registerSystemPanels(host: PanelHost): void {
       row(button('Quick save (Ctrl+S)', () => game.quickSave(), 'btn small'), button('Quick load (Ctrl+L)', () => game.quickLoad(), 'btn small')),
       row(button(t('export') + ' file', () => exportToFile(game.state, `railyard-${game.state.world.seed}`), 'btn small'), button(t('import') + ' file', () => importInput.click(), 'btn small'), importInput),
       row(h('span', { className: 'muted' }, t('autosave') + ' '), autosaveSel),
+      h('h3', null, 'Progress'),
+      row(button(`Achievements (${game.state.achievements.length}/${ACHIEVEMENTS.length})`, () => showAchievements(game), 'btn small'), button('Show tutorial again', () => { game.state.tutorialStep = 0; }, 'btn small')),
       h('h3', null, 'Display'),
+      row(h('span', { className: 'muted' }, 'UI size '), scaleSel),
       row(h('label', null, catchToggle, ' Show station coverage')),
       row(h('label', null, linesToggle, ' Show lines on map')),
       h('h3', null, 'Keys'),

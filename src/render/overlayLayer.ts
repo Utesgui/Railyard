@@ -5,6 +5,7 @@ import type { GameState } from '../core/types';
 import { fmtMoney } from '../ui/format';
 import type { UIState } from '../ui/uiState';
 import { catchmentBounds } from '../world/catchment';
+import { inBox } from '../sim/train/geometry';
 import type { Camera } from './camera';
 import { COLORS, LINE_COLORS } from './palette';
 
@@ -86,6 +87,22 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, cam: Camera, state: G
       ctx.lineWidth = 2 / z;
       ctx.strokeRect(ax - half + 2, ay - half + 2, TILE_PX - 4, TILE_PX - 4);
     }
+    ui.trackWaypoints.forEach((t, i) => {
+      const [x, y] = center(t, w);
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.moveTo(x, y - 8);
+      ctx.lineTo(x + 8, y);
+      ctx.lineTo(x, y + 8);
+      ctx.lineTo(x - 8, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#111';
+      ctx.font = `bold ${9 / z}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(i + 1), x, y + 0.5);
+    });
     const pv = ui.trackPreview;
     if (pv && pv.nodes.length > 1) {
       ctx.strokeStyle = pv.ok ? COLORS.preview : COLORS.previewBad;
@@ -157,6 +174,15 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, cam: Camera, state: G
     if (st) {
       const [x, y] = center(st.tile, w);
       ctx.strokeRect(x - 15, y - 15, 30, 30);
+    }
+  } else if (sel.kind === 'train') {
+    const tr = rt.trainById.get(sel.id);
+    const st = tr && inBox(tr) ? rt.stationById.get(tr.platformStation) : undefined;
+    if (st) {
+      const [x, y] = center(st.tile, w);
+      ctx.setLineDash([4 / z, 3 / z]);
+      ctx.strokeRect(x - 15, y - 15, 30, 30);
+      ctx.setLineDash([]);
     }
   } else if (sel.kind === 'industry') {
     const ind = rt.industryById.get(sel.id);

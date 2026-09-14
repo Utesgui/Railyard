@@ -105,3 +105,26 @@ describe('train routing', () => {
     expect(findRoute(wd, 5 * 20 + 6, 5 * 20 + 4, scratch)).not.toBeNull();
   });
 });
+
+describe('waypoint routing', () => {
+  it('routes through waypoints and joins legs smoothly', async () => {
+    const { buildRouteVia } = await import('./buildRoute');
+    const wd = world();
+    const occ = new Uint8Array(400);
+    const scratch = new AStarScratch(400);
+    const a = 2 * 20 + 2;
+    const wp = 10 * 20 + 10;
+    const b = 2 * 20 + 18;
+    const direct = buildRouteVia(wd, occ, [a, b], scratch);
+    const via = buildRouteVia(wd, occ, [a, wp, b], scratch);
+    expect(direct.ok && via.ok).toBe(true);
+    expect(via.nodes).toContain(wp);
+    expect(via.cost).toBeGreaterThan(direct.cost);
+    expect(maxTurn(via.nodes, 20)).toBeLessThanOrEqual(1);
+    // a waypoint that points away from the target is honoured with a loop, never a sharp bend
+    const uturn = buildRouteVia(wd, occ, [a, 2 * 20 + 10, 2 * 20 + 4], scratch);
+    expect(uturn.ok).toBe(true);
+    expect(maxTurn(uturn.nodes, 20)).toBeLessThanOrEqual(1);
+    expect(uturn.nodes.length).toBeGreaterThan(direct.nodes.length);
+  });
+});

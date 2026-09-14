@@ -14,6 +14,7 @@ import { fbm } from './noise';
 export interface GenOptions {
   width?: number;
   height?: number;
+  startMoney?: number;
 }
 
 /** Generate a complete new-game state from a seed. Deterministic. */
@@ -52,10 +53,11 @@ export function generateWorld(seed: number, opts: GenOptions = {}): GameState {
     stations: [],
     lines: [],
     trains: [],
-    economy: { money: B.startMoney, loan: 0, ledger: [newLedgerMonth(START_YEAR, 0)], yearly: [], monthsInsolvent: 0 },
+    economy: { money: opts.startMoney ?? B.startMoney, startMoney: opts.startMoney ?? B.startMoney, loan: 0, ledger: [newLedgerMonth(START_YEAR, 0)], yearly: [], monthsInsolvent: 0 },
     notifications: [],
     achievements: [],
-    stats: { paxDelivered: 0, cargoDelivered: 0, revenueTotal: 0 },
+    stats: { paxDelivered: 0, cargoDelivered: 0, revenueTotal: 0, trainsBought: 0, byCargo: new Array(CARGO_COUNT).fill(0) },
+    tutorialStep: 0,
   };
 }
 

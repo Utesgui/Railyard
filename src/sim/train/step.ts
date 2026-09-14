@@ -51,6 +51,7 @@ export function stepTrainsDaily(state: GameState, rt: Runtime, ev: Events | null
         spend(state, cost, 'vehicles');
         train.profitMonth -= cost;
         notify(state, ev, 'warn', `${train.name} broke down (repair $${cost.toLocaleString('en-US')})`, train.path[Math.max(0, train.headEdge)]);
+        ev?.emit('floater', { tile: train.path[Math.min(train.path.length - 1, Math.max(0, train.headEdge + 1))], text: `-$${cost.toLocaleString('en-US')} repair`, color: '#e0483f' });
       }
     }
   }

@@ -36,7 +36,9 @@ export function stepMoving(state: GameState, rt: Runtime, train: Train, ev: Even
   const L = trainLength(train);
   const info = consistInfo(train);
   const total = cum[last];
-  const arrivePos = total + L / 2;
+  // the train has arrived once every vehicle has passed the station centre (into the building)
+  const arrivePos = total + L;
+  const entrance = total - B.boxEntrance;
   const distToArrive = arrivePos - train.pathPos;
   const ghost = train.ghostUntilEdge >= 0;
 
@@ -52,7 +54,6 @@ export function stepMoving(state: GameState, rt: Runtime, train: Train, ev: Even
   const arrStationId = rt.stationAt[path[last]];
   const arrStation = arrStationId >= 0 ? rt.stationById.get(arrStationId) : undefined;
   if (arrStation && !(train.platformStation === arrStation.id && train.platformSlot >= 0)) {
-    const entrance = total - L / 2 - 0.25;
     if (entrance - train.pathPos <= look) {
       if (!reservePlatform(rt, train, arrStation)) blocker = Math.min(blocker, entrance - train.pathPos);
     }
@@ -88,7 +89,7 @@ export function stepMoving(state: GameState, rt: Runtime, train: Train, ev: Even
   if (blocker < distToArrive && stopDist < 0.02) {
     train.blockedTicks++;
     if (train.blockedTicks > B.deadlockTicks && !ghost && arrStation) {
-      const canGhost = !(train.platformSlot < 0 && blocker <= (total - L / 2 - 0.25 - train.pathPos) + 1e-6);
+      const canGhost = !(train.platformSlot < 0 && blocker <= entrance - train.pathPos + 1e-6);
       if (canGhost) {
         train.ghostUntilEdge = ghostEndEdge(rt, path, Math.min(last - 1, train.headEdge + 1), w);
         train.blockedTicks = 0;
@@ -100,6 +101,7 @@ export function stepMoving(state: GameState, rt: Runtime, train: Train, ev: Even
   } else train.blockedTicks = 0;
 
   train.pathPos += move;
+  train.distanceTotal += move;
 
   // claim edges the head has entered
   while (train.headEdge + 1 <= last - 1 && cum[train.headEdge + 1] <= train.pathPos) {

@@ -12,8 +12,7 @@ import { deliveryRevenue, earn } from '../economy';
 import { deliverToIndustry } from '../industry';
 import { notify } from '../notify';
 import { addToPile, takeFromPile } from '../station';
-import { consistInfo } from './consist';
-import { trainLength } from './geometry';
+import { consistInfo, trainCapacity, trainLoad } from './consist';
 
 // ------------------------------------------------------------------ schedule helpers
 
@@ -201,8 +200,7 @@ export function departTrain(state: GameState, rt: Runtime, train: Train, ev: Eve
     return;
   }
   const w = state.world.width;
-  const L = trainLength(train);
-  const start = L / 2;
+  const start = 0; // nose at the station centre; vehicles emerge from the building as it moves
   const path = route.path;
   const cum = route.cum;
   let k = 0;
@@ -235,6 +233,11 @@ export function departTrain(state: GameState, rt: Runtime, train: Train, ev: Eve
   train.speed = 0;
   train.blockedTicks = 0;
   train.boxDir = dirBetween(path[0], path[1], w);
+  const cap = trainCapacity(train);
+  if (cap > 0) {
+    train.loadSum += trainLoad(train) / cap;
+    train.loadCount++;
+  }
   if (forced) {
     train.ghostUntilEdge = ghostEndEdge(rt, path, 0, w);
     notify(state, ev, 'warn', `${train.name} forced its way out of ${from.name} (congestion: add platforms or a passing loop)`, from.tile);
@@ -287,6 +290,10 @@ function exchangeCargo(state: GameState, rt: Runtime, train: Train, line: Line, 
         train.profitMonth += rev;
         line.revenueMonth += rev;
         consume(state, rt, station, wg.cargo, wg.amount);
+        station.deliveredMonth[wg.cargo] += wg.amount;
+        line.cargoMonth[wg.cargo] += wg.amount;
+        train.deliveredTotal += wg.amount;
+        state.stats.byCargo[wg.cargo] += wg.amount;
         if (wg.cargo === Cargo.Passengers) state.stats.paxDelivered += wg.amount;
         else state.stats.cargoDelivered += wg.amount;
         deliveredUnits += wg.amount;
@@ -309,8 +316,8 @@ function exchangeCargo(state: GameState, rt: Runtime, train: Train, line: Line, 
   if (!stop.noLoad) units += loadWagons(state, rt, train, station, nextStation, day);
   markVisit(state, train, station, stop);
   if (revenueTotal > 0 && ev) {
-    const what = deliveredUnits > 0 && deliveredCargo >= 0 ? `${deliveredUnits} ${cargoName(deliveredCargo)}` : 'transfer';
-    notify(state, ev, 'money', `+$${revenueTotal.toLocaleString('en-US')}  ${what} → ${station.name}`, station.tile, false);
+    const what = deliveredUnits > 0 && deliveredCargo >= 0 ? cargoName(deliveredCargo) : 'transfer';
+    ev.emit('floater', { tile: station.tile, text: `+$${revenueTotal.toLocaleString('en-US')} ${what}`, color: '#6fcf6f' });
   }
   return units;
 }
@@ -330,6 +337,7 @@ function loadWagons(state: GameState, rt: Runtime, train: Train, station: Statio
         takeFromPile(station, i, take);
         wg.amount += take;
         units += take;
+        station.pickedUpMonth[wg.cargo] += take;
       }
       continue;
     }
@@ -354,6 +362,7 @@ function loadWagons(state: GameState, rt: Runtime, train: Train, station: Statio
     wg.originTile = station.tile;
     takeFromPile(station, bi, take);
     units += take;
+    station.pickedUpMonth[p.cargo] += take;
   }
   return units;
 }
