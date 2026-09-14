@@ -9,8 +9,12 @@ No game engine, no runtime dependencies: TypeScript + Vite + Canvas 2D, HUD in p
 
 ## Play
 
+Use Node.js **26.8.2** (the current stable release, not LTS), pinned in `.node-version`,
+and npm **12.0.2**, pinned in `package.json`. Switch to that Node version with your
+version manager and install npm with `npm install --global npm@12.0.2` if needed.
+
 ```
-npm install
+npm ci
 npm run dev          # http://localhost:5173  (add ?seed=1234 for a specific map)
 ```
 
@@ -51,6 +55,15 @@ locomotive with matching wagons. A short tutorial walks you through it on a new 
   configurable start money, map size, volume and UI size in the settings.
 
 ## Develop
+
+Direct npm dependencies use exact versions (`.npmrc` enables `save-exact`); the committed
+lockfile pins the full dependency tree with SHA-512 integrity hashes. Use `npm ci` for
+reproducible installs. GitHub Actions use full commit SHAs with release-version comments.
+Dependabot checks npm packages and Actions weekly. CI reads `.node-version` and installs
+the npm version from `packageManager`; update those pins when upgrading the toolchain.
+
+Before the first end-to-end test, install its browser with `npx playwright install chromium`
+(on Linux, use `npx playwright install --with-deps chromium`).
 
 ```
 npm run typecheck    # tsc

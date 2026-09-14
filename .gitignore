@@ -3,5 +3,6 @@ dist/
 test-results/
 playwright-report/
 .vite/
+.vitest/
 *.log
 .DS_Store
