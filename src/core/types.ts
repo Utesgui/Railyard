@@ -67,6 +67,8 @@ export interface Industry {
   lowServiceMonths: number;
   /** scenario flavour: fixed price modifiers (see sim/prices.ts) */
   perks?: PricePerk[];
+  /** scenario flavour: a custom map drawing (render/staticLayer.ts), e.g. 'zf' */
+  art?: string;
 }
 
 export interface CargoPile {

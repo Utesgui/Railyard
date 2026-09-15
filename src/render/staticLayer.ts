@@ -123,7 +123,7 @@ export class StaticLayer {
     // industries (draw whole footprint when its top-left is in this chunk or overlaps)
     for (const ind of state.industries) {
       if (ind.x + 1 < x0 || ind.x > x0 + CHUNK_TILES - 1 || ind.y + 1 < y0 || ind.y > y0 + CHUNK_TILES - 1) continue;
-      drawIndustry(g, (ind.x - x0) * TILE_PX, (ind.y - y0) * TILE_PX, INDUSTRIES[ind.type].color, ind.type);
+      drawIndustry(g, (ind.x - x0) * TILE_PX, (ind.y - y0) * TILE_PX, ind.art === 'zf' ? '#1d3e63' : INDUSTRIES[ind.type].color, ind.type, ind.art);
     }
     this.dirty[idx] = 0;
   }
@@ -229,7 +229,7 @@ function drawHouse(g: CanvasRenderingContext2D, px: number, py: number, rnd: num
   g.fillRect(x + size * 0.6, y + size * 0.55, size * 0.2, size * 0.2);
 }
 
-function drawIndustry(g: CanvasRenderingContext2D, px: number, py: number, color: string, type: number): void {
+function drawIndustry(g: CanvasRenderingContext2D, px: number, py: number, color: string, type: number, art?: string): void {
   const s = TILE_PX * 2;
   // ground plate + shadow
   g.fillStyle = 'rgba(0,0,0,0.22)';
@@ -243,6 +243,11 @@ function drawIndustry(g: CanvasRenderingContext2D, px: number, py: number, color
   g.strokeRect(px + 2, py + 2, s - 4, s - 4);
   g.save();
   g.translate(px, py);
+  if (art === 'zf') {
+    drawZfWorks(g);
+    g.restore();
+    return;
+  }
   switch (type) {
     case 0:
       drawForest(g);
@@ -524,6 +529,56 @@ function drawFactory(g: CanvasRenderingContext2D): void {
   g.fill();
   for (let i = 0; i < 4; i++) rect(g, 12 + i * 11, 38, 6, 6, LIGHT);
   rect(g, 26, 46, 8, 10, DARK);
+}
+
+/** A toothed gear centred at (cx, cy). */
+function gear(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, teeth: number, fill: string): void {
+  g.fillStyle = fill;
+  g.beginPath();
+  for (let i = 0; i < teeth * 2; i++) {
+    const a0 = (i / (teeth * 2)) * Math.PI * 2;
+    const a1 = ((i + 1) / (teeth * 2)) * Math.PI * 2;
+    const rr = i % 2 === 0 ? r : r * 0.78;
+    if (i === 0) g.moveTo(cx + Math.cos(a0) * rr, cy + Math.sin(a0) * rr);
+    g.lineTo(cx + Math.cos(a0) * rr, cy + Math.sin(a0) * rr);
+    g.lineTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr);
+  }
+  g.closePath();
+  g.fill();
+  g.fillStyle = 'rgba(0,0,0,0.45)';
+  g.beginPath();
+  g.arc(cx, cy, r * 0.32, 0, Math.PI * 2);
+  g.fill();
+}
+
+/** The ZF gearbox works: a sawtooth hall, a big gearbox pair in the yard and the ZF sign on the roof. */
+function drawZfWorks(g: CanvasRenderingContext2D): void {
+  rect(g, 6, 30, 52, 26, '#5f6b7a');
+  g.fillStyle = '#8a97a8';
+  g.beginPath();
+  for (let i = 0; i < 3; i++) {
+    const x = 6 + i * 17;
+    g.moveTo(x, 30);
+    g.lineTo(x + 11, 19);
+    g.lineTo(x + 17, 30);
+  }
+  g.closePath();
+  g.fill();
+  for (let i = 0; i < 3; i++) rect(g, 17 + i * 17, 21, 5, 8, 'rgba(255,255,255,0.55)');
+  for (let i = 0; i < 4; i++) rect(g, 10 + i * 12, 37, 7, 5, LIGHT);
+  rect(g, 38, 46, 10, 10, DARK);
+  // the product: a meshing gear pair in the yard
+  gear(g, 16, 48, 7.5, 8, '#d9dde3');
+  gear(g, 28, 50, 5.5, 6, '#c2c8d0');
+  // sign: blue plate with the letters
+  rect(g, 34, 6, 24, 13, '#0f4c81');
+  rect(g, 34, 6, 24, 1.5, 'rgba(255,255,255,0.35)');
+  g.fillStyle = '#ffffff';
+  g.font = 'bold 10px sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('ZF', 46, 13);
+  rect(g, 44, 19, 4, 11, '#3c4248');
 }
 
 function drawFarm(g: CanvasRenderingContext2D): void {

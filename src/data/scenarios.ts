@@ -143,6 +143,11 @@ export const PASSAU_MAP: DrawnMap = {
     { type: 'foodPlant', x: 65, y: 70, name: 'Schärding Brewery', perks: [{ cargo: Cargo.Food, pct: 10, label: 'Brewery tradition' }] },
     { type: 'forest', x: 98, y: 62, name: 'Sauwald Forest' },
     { type: 'sawmill', x: 92, y: 64, name: 'Sauwald Sawmill' },
+    // heavy industry (fictional for the district): a steelworks below Vilshofen, the ZF gearbox
+    // works on the north bank at Passau, a refinery on the Austrian Danube near the eastern edge
+    { type: 'steelMill', x: 22, y: 37, name: 'Vilshofen Steelworks' },
+    { type: 'factory', x: 60, y: 36, name: 'ZF Passau', art: 'zf', perks: [{ cargo: Cargo.Goods, pct: 8, label: 'Precision gearboxes' }] },
+    { type: 'refinery', x: 121, y: 59, name: 'Wesenufer Refinery' },
     { type: 'farm', x: 22, y: 76, name: 'Rottal Farm' },
     { type: 'farm', x: 36, y: 63, name: 'Griesbach Farm' },
     { type: 'farm', x: 53, y: 86, name: 'Kirchham Farm' },
@@ -192,7 +197,7 @@ export const SCENARIOS: readonly ScenarioDef[] = [
     id: 'passau',
     name: 'Passau District',
     tagline: 'Danube, Inn and Ilz – timber from the forest, grain from the Rottal, guests for the spas.',
-    description: 'The district of Passau in Lower Bavaria, half a kilometre per tile. The Danube crosses the map from Vilshofen to the Austrian border, the Inn arrives from the south and the Ilz from the Bavarian Forest, all meeting at Passau. Sawmills in Tittling and Hauzenberg want the forest’s logs; the Rottal farms feed the Aldersbach brewery and the Pocking dairy; the spa towns Bad Füssing and Bad Griesbach pay extra for passengers. Across the Inn and the Danube lies Upper Austria: Schärding and the Innviertel villages, the wooded Sauwald plateau with its own timber, and the flat Pram valley with farms and oil. The Kropfmühl graphite mine, the mountain mines and the oil fields sell through Bayernhafen Passau, where a barge carries bulk cargo down the Danube. Bridges are the cost of doing business here.',
+    description: 'The district of Passau in Lower Bavaria, half a kilometre per tile. The Danube crosses the map from Vilshofen to the Austrian border, the Inn arrives from the south and the Ilz from the Bavarian Forest, all meeting at Passau. Sawmills in Tittling and Hauzenberg want the forest’s logs; the Rottal farms feed the Aldersbach brewery and the Pocking dairy; the spa towns Bad Füssing and Bad Griesbach pay extra for passengers. Across the Inn and the Danube lies Upper Austria: Schärding and the Innviertel villages, the wooded Sauwald plateau with its own timber, and the flat Pram valley with farms and oil. Coal and ore feed the Vilshofen steelworks, whose steel the ZF gearbox works in Passau turns into goods; oil from the Pram valley goes to the refinery at Wesenufer or, like graphite, coal and ore, to Bayernhafen Passau, where a barge carries bulk cargo down the Danube. Bridges are the cost of doing business here.',
     difficulty: 'medium',
     startMoney: 750_000,
     startYear: 1900,

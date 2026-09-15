@@ -39,6 +39,8 @@ export interface DrawnIndustry {
   name: string;
   perks?: PricePerk[];
   level?: number;
+  /** custom map drawing key (see render/staticLayer.ts) */
+  art?: string;
 }
 
 /** A decorative vessel shuttling along a polyline of water tiles (positions derive from game time). */
@@ -217,6 +219,7 @@ export function generateDrawn(def: DrawnMap, opts: GenOptions = {}): GameState {
     if (!spot) continue;
     const ind = newIndustry(type, spot[0], spot[1], d.name);
     if (d.perks) ind.perks = d.perks;
+    if (d.art) ind.art = d.art;
     if (d.level) ind.level = Math.max(1, Math.min(8, d.level));
     commitIndustry(world, occ, industries, ind);
   }

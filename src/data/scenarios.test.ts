@@ -82,7 +82,8 @@ describe('scenarios', () => {
     }
     expect(lonely).toBe(0);
     const kinds = new Set(s.industries.map((i) => INDUSTRIES[i.type].key));
-    expect(kinds).toEqual(new Set(['forest', 'sawmill', 'farm', 'foodPlant', 'graphiteMine', 'riverPort', 'coalMine', 'ironMine', 'oilWell']));
+    expect(kinds).toEqual(new Set(['forest', 'sawmill', 'farm', 'foodPlant', 'graphiteMine', 'riverPort', 'coalMine', 'ironMine', 'oilWell', 'steelMill', 'factory', 'refinery']));
+    expect(s.industries.find((i) => i.name === 'ZF Passau')?.art).toBe('zf');
     // the port sits on the north bank of the Danube, the mines in the hills
     const port = s.industries.find((i) => i.name === 'Bayernhafen Passau')!;
     let waterBelow = 0;
