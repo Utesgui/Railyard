@@ -2,13 +2,12 @@ import type { Game } from '../../app/Game';
 import { CARGO, Cargo, TOWN_ACCEPTS } from '../../data/cargo';
 import { INDUSTRIES, isRawIndustry } from '../../data/industries';
 import { monthlyProduction } from '../../sim/industry';
-import { chooseFreightDest } from '../../sim/cargoRouting';
 import { badge, button, clear, emptyState, h, kpi, kpis, kv, kvGrid, listRow, meter, section, sectionMeta } from '../dom';
 import { fmtInt, fmtPct } from '../format';
 import { t } from '../../i18n/t';
 import { cargoIcon, cargoTag, uiIcon } from '../icons';
 import type { PanelHost } from './PanelHost';
-import { openEntity } from './shared';
+import { industryDiagnosis, openEntity } from './shared';
 
 export function registerEntityPanels(host: PanelHost): void {
   host.register('industry', (game: Game, host, id) => {
@@ -17,7 +16,7 @@ export function registerEntityPanels(host: PanelHost): void {
     const type = INDUSTRIES[ind.type];
     const raw = isRawIndustry(type);
     const w = game.state.world.width;
-    const statusWrap = h('div', { className: 'row' });
+    const statusWrap = h('div', { className: 'status' });
     const kpiWrap = h('div');
     const prodWrap = h('div');
     const stations = h('div', { className: 'list' });
@@ -42,21 +41,29 @@ export function registerEntityPanels(host: PanelHost): void {
       const s = game.state;
       const rt = game.rt;
       const list = s.stations.filter((x) => rt.catchment.get(x.id)?.industries.includes(id));
-      const served = list.some((x) => rt.served.has(x.id));
-      const share = ind.producedLastMonth > 0 ? Math.min(1, ind.transportedLastMonth / ind.producedLastMonth) : -1;
-      // outputs that no station on the line network accepts (same lookup the simulation uses)
-      const noDest = served ? type.outputs.filter((c) => !list.some((x) => rt.served.has(x.id) && chooseFreightDest(s, rt, x.id, c) >= 0)) : [];
-      const starving = !raw && served && ind.producedLastMonth === 0 && ind.producedMonth === 0 && ind.inputStock.every((v) => v < 1);
-      const sk = `${served}|${list.length}|${share.toFixed(2)}|${ind.monthsUnserved}|${noDest.join(',')}|${starving}`;
+      const diag = industryDiagnosis(s, rt, ind);
+      const sk = `${diag.code}|${diag.label}|${diag.hint}|${diag.stationId}`;
       if (sk !== statusKey) {
         statusKey = sk;
         clear(statusWrap);
-        if (!list.length) statusWrap.append(badge('warn', 'No station in range'), h('span', { className: 'hint' }, 'Place a station within 3 tiles to collect the output.'));
-        else if (!served) statusWrap.append(badge('warn', 'Station not on a line'), h('span', { className: 'hint' }, 'Add the station to a line with a destination for the cargo.'));
-        else if (noDest.length) statusWrap.append(badge('warn', `No destination for ${noDest.map((c) => CARGO[c].name).join(', ')}`), h('span', { className: 'hint' }, 'No station reachable on the line network accepts it, so nothing is produced for transport.'));
-        else if (starving) statusWrap.append(badge('warn', 'No inputs delivered'), h('span', { className: 'hint' }, `Deliver ${type.inputs.map((c) => CARGO[c].name).join(' or ')} by train to start production.`));
-        else if (share >= 0 && share < 0.6 && raw) statusWrap.append(badge('warn', `${fmtPct(share)} moved last month`), h('span', { className: 'hint' }, 'Below 60%: production will not grow.'));
-        else statusWrap.append(badge('ok', 'Served'), h('span', { className: 'hint' }, share >= 0 ? `${fmtPct(share)} of last month's output was moved.` : 'Waiting for the first full month.'));
+        const actions = h('span', { className: 'row' });
+        // cause → action
+        const stationBtn = diag.stationId >= 0 ? button('Open station', () => openEntity(game, host, 'station', diag.stationId), 'btn small') : null;
+        switch (diag.code) {
+          case 'noStation':
+            actions.append(button([uiIcon('station', 14), 'Station tool'], () => { game.focusTile(ind.y * w + ind.x); game.setTool('station'); }, 'btn small'));
+            break;
+          case 'notOnLine':
+          case 'noDest':
+          case 'noInputs':
+            actions.append(button([uiIcon('lines', 14), 'Open lines'], () => host.push('lines'), 'btn small'));
+            break;
+          case 'pileFull':
+          case 'lowShare':
+            if (stationBtn) actions.append(stationBtn);
+            break;
+        }
+        statusWrap.append(h('div', { className: 'row between' }, badge(diag.tone, diag.label), actions), h('div', { className: 'hint' }, diag.hint));
       }
       const kk = `${ind.level}|${ind.producedLastMonth | 0}|${ind.transportedLastMonth | 0}`;
       if (kk !== kpiKey) {

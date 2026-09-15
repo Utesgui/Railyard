@@ -58,7 +58,14 @@ export interface GameRef {
  * Commands validate, mutate, keep Runtime indexes in sync and emit events.
  */
 export class Commands {
-  constructor(private g: GameRef) {}
+  /** the most recent buildTrack, undoable for a short while (see canUndoBuild) */
+  private lastBuild: { edges: [number, Dir][]; cost: number; builtAt: number } | null = null;
+
+  constructor(private g: GameRef) {
+    g.events.on('stateReplaced', () => {
+      this.lastBuild = null;
+    });
+  }
 
   private get state(): GameState {
     return this.g.state;
@@ -94,15 +101,99 @@ export class Commands {
     if (!priced.ok) return fail('cannot build here');
     if (priced.newEdges === 0) return fail('already built');
     if (s.economy.money < priced.cost) return fail('not enough money');
+    const built: [number, Dir][] = [];
     for (let i = 0; i + 1 < nodes.length; i++) {
       const d = dirBetween(nodes[i], nodes[i + 1], world.width);
       if (hasEdge(world, nodes[i], d)) continue;
       if (!canAddEdge(world, this.rt.tileOcc, nodes[i], d)) return fail('cannot build here');
       addEdge(world, nodes[i], d);
+      built.push([nodes[i], d]);
     }
     spend(s, priced.cost, 'construction');
+    this.lastBuild = { edges: built, cost: priced.cost, builtAt: Date.now() };
     this.afterTrackChanged();
     return ok();
+  }
+
+  /** Undo window for the last track build (real time; a mis-click is noticed within seconds). */
+  static readonly UNDO_MS = 60_000;
+
+  /** Can the last build still be taken back at full refund? */
+  canUndoBuild(): { ok: boolean; reason?: string; refund: number; edges: number } {
+    const lb = this.lastBuild;
+    if (!lb) return { ok: false, reason: 'nothing to undo', refund: 0, edges: 0 };
+    const base = { refund: lb.cost, edges: lb.edges.length };
+    if (Date.now() - lb.builtAt > Commands.UNDO_MS) return { ok: false, reason: 'the undo window has passed', ...base };
+    const world = this.state.world;
+    for (const [t, d] of lb.edges) {
+      if (!hasEdge(world, t, d)) return { ok: false, reason: 'the track was changed since', ...base };
+      if (isDouble(world, t, d)) return { ok: false, reason: 'the track was upgraded since', ...base };
+    }
+    const blocked = this.edgesInUse(lb.edges);
+    if (blocked) return { ok: false, reason: blocked, ...base };
+    return { ok: true, ...base };
+  }
+
+  /** Remove the edges of the last build and refund the full price. */
+  undoLastBuild(): CmdResult & { refund?: number } {
+    const can = this.canUndoBuild();
+    if (!can.ok || !this.lastBuild) return fail(can.reason ?? 'cannot undo');
+    const s = this.state;
+    for (const [t, d] of this.lastBuild.edges) removeEdgeRaw(s.world, t, d);
+    spend(s, -this.lastBuild.cost, 'construction');
+    const refund = this.lastBuild.cost;
+    this.lastBuild = null;
+    this.afterTrackChanged();
+    return { ok: true, refund };
+  }
+
+  /** Why the edges cannot be removed right now (a train holds or is routed over one), or null. */
+  private edgesInUse(edges: [number, Dir][]): string | null {
+    const s = this.state;
+    const world = s.world;
+    const w = world.width;
+    for (const [et, ed] of edges) {
+      const e = edgeIdOf(et, ed, w);
+      if (edgeBusy(this.rt, e)) return 'a train is in the way';
+      const n = neighbor(et, ed, w, world.height);
+      for (const train of s.trains) {
+        if (train.state !== TrainState.Moving && train.state !== TrainState.Broken) continue;
+        for (let i = Math.max(0, train.headEdge); i + 1 < train.path.length; i++) {
+          const a = train.path[i];
+          const b = train.path[i + 1];
+          if ((a === et && b === n) || (a === n && b === et)) return 'a train is routed over this track';
+        }
+      }
+    }
+    return null;
+  }
+
+  /** Refund for demolishing every edge of a segment (25% of build and upgrade cost). */
+  segmentDemolishRefund(edges: number[]): { refund: number; count: number } {
+    const world = this.state.world;
+    let refund = 0;
+    for (const e of edges) {
+      const et = e >> 2;
+      const ed = (e & 3) as Dir;
+      refund += (edgeBuildCost(world, et, ed) + (isDouble(world, et, ed) ? doubleUpgradeCost(world, et, ed) : 0)) * B.demolishRefund;
+    }
+    return { refund: Math.round(refund), count: edges.length };
+  }
+
+  /** Remove the whole segment (junction to junction) containing t->d. All or nothing. */
+  removeSegment(t: number, d: Dir): CmdResult & { refund?: number } {
+    const s = this.state;
+    const world = s.world;
+    if (!hasEdge(world, t, d)) return fail('no track');
+    const edges = this.segmentEdges(t, d).map((e): [number, Dir] => [e >> 2, (e & 3) as Dir]);
+    const blocked = this.edgesInUse(edges);
+    if (blocked) return fail(blocked);
+    const { refund } = this.segmentDemolishRefund(edges.map(([et, ed]) => edgeIdOf(et, ed, world.width)));
+    for (const [et, ed] of edges) removeEdgeRaw(world, et, ed);
+    spend(s, -refund, 'construction');
+    this.lastBuild = null;
+    this.afterTrackChanged();
+    return { ok: true, refund };
   }
 
   /** Remove one edge (or a whole bridge/tunnel run). Refuses if a train uses it. */

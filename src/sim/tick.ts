@@ -5,7 +5,7 @@ import { tickToDate } from '../core/time';
 import { TrainState, type GameState } from '../core/types';
 import { B } from '../data/balance';
 import { totalMaintenance } from '../track/graph';
-import { ledgerNet, rollLedger, spend } from './economy';
+import { ledgerTotalRevenue, ledgerNet, rollLedger, spend } from './economy';
 import { newVehiclesIn } from './eras';
 import { checkAchievements } from './achievements';
 import { monthEndContracts } from './contracts';
@@ -116,11 +116,18 @@ export function yearEnd(state: GameState, rt: Runtime, ev: Events | null): void 
   const d = tickToDate(state.tick, state.startYear);
   const lastYear = d.year - 1;
   let net = 0;
-  for (let i = 1; i <= 12 && i < state.economy.ledger.length; i++) net += ledgerNet(state.economy.ledger[i]);
+  let operating = 0;
+  for (let i = 1; i <= 12 && i < state.economy.ledger.length; i++) {
+    const l = state.economy.ledger[i];
+    net += ledgerNet(l);
+    operating += ledgerTotalRevenue(l) - l.trainRunning - l.trackMaint - l.stationMaint - l.loanInterest;
+  }
   state.economy.yearly.push({ year: lastYear, net });
   for (const train of state.trains) train.profitYear = 0;
   const fresh = newVehiclesIn(d.year);
   if (fresh.length > 0) notify(state, ev, 'good', `New vehicles available: ${fresh.join(', ')}`);
-  notify(state, ev, net >= 0 ? 'good' : 'warn', `${lastYear} result: ${net >= 0 ? '+' : '-'}$${Math.abs(net).toLocaleString('en-US')}`);
+  const money = (v: number) => `${v >= 0 ? '+' : '-'}$${Math.abs(Math.round(v)).toLocaleString('en-US')}`;
+  // the warning colour follows the operating result: investments are a choice, not a loss
+  notify(state, ev, operating >= 0 ? 'good' : 'warn', `${lastYear}: operating result ${money(operating)}, net incl. investments ${money(net)}`);
   ev?.emit('year');
 }

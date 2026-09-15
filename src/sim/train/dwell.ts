@@ -244,7 +244,7 @@ export function departTrain(state: GameState, rt: Runtime, train: Train, ev: Eve
   }
   if (forced) {
     train.ghostUntilEdge = ghostEndEdge(rt, path, 0, w);
-    notify(state, ev, 'warn', `${train.name} forced its way out of ${from.name} (congestion: add platforms or a passing loop)`, from.tile);
+    notify(state, ev, 'warn', `${train.name} forced its way out of ${from.name} (congestion: add platforms or a second track)`, from.tile);
   } else train.ghostUntilEdge = NONE;
 }
 

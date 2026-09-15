@@ -43,8 +43,19 @@ export function registerContractsPanel(host: PanelHost): void {
       const facts: (Node | null)[] = [];
       const fact = (k: string, v: string, cls = '') => facts.push(h('span', { className: 'k' }, k), h('span', { className: 'v ' + cls }, v));
       fact('Cargo', `${fmtInt(c.amount)} ${CARGO[c.cargo].unit} ${CARGO[c.cargo].name}`);
-      fact('Destination', targetName(s, rt, c));
+      // is the destination reachable at all, and does the company move this cargo today?
+      const servedTarget = s.stations.some((st) => {
+        if (!rt.served.has(st.id)) return false;
+        const cat = rt.catchment.get(st.id);
+        return !!cat && (c.targetKind === 'town' ? cat.towns.includes(c.targetId) : cat.industries.includes(c.targetId));
+      });
+      fact('Destination', `${targetName(s, rt, c)}${c.status === 'offered' || c.status === 'active' ? (servedTarget ? ' (served station)' : ' (no station on a line)') : ''}`, c.status === 'offered' && !servedTarget ? 'warn' : '');
       fact('Reward', fmtMoney(c.reward), 'good');
+      if (c.status === 'offered' || c.status === 'active') {
+        let moved = 0;
+        for (const l of s.lines) moved += l.cargoLastMonth[c.cargo] ?? 0;
+        fact('You move', moved > 0 ? `${fmtInt(moved)} ${CARGO[c.cargo].unit}/month (last month)` : 'none of this cargo yet', moved > 0 ? '' : 'warn');
+      }
       if (c.status === 'offered') {
         fact('Penalty if failed', fmtMoney(c.penalty), 'warn');
         fact('Time to deliver', `${c.deliveryMonths} months after accepting`);

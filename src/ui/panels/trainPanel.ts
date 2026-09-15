@@ -6,7 +6,7 @@ import { CARGO, type CargoClass } from '../../data/cargo';
 import { LOCOS, WAGONS, locosAvailable, wagonsAvailable, wagonSpeedLimit, type LocoSpec, type WagonSpec } from '../../data/vehicles';
 import { consistInfo, trainCapacity, trainLoad } from '../../sim/train/consist';
 import { trainHeadWorld, type VehiclePose } from '../../sim/train/geometry';
-import { badge, button, clear, emptyState, h, kpi, kpis, kv, kvGrid, listRow, meter, row, section, sectionMeta, type Tone } from '../dom';
+import { badge, button, clear, collapsible, emptyState, h, kpi, kpis, kv, kvGrid, listRow, meter, row, section, sectionMeta, type Tone } from '../dom';
 import { fmtInt, fmtMoney, fmtMoneyShort, fmtPct, fmtSpeed } from '../format';
 import { barChart } from '../chart';
 import { monthKey, monthLabels } from './stats';
@@ -41,6 +41,16 @@ function vehicleBox(label: string, sub: string, bg: string, title: string, extra
   return h('span', { className: `vehicle ${textColorFor(bg)} ${extra}`.trim(), style: { background: bg }, title }, h('span', { className: 'name' }, label), sub ? h('span', { className: 'amt' }, sub) : null);
 }
 
+/** Upcoming locomotives and the ones about to leave the catalogue (data from the vehicle table). */
+function vehicleTimeline(year: number): HTMLElement {
+  const upcoming = LOCOS.filter((l) => l.intro > year).sort((a, b) => a.intro - b.intro);
+  const leaving = LOCOS.filter((l) => l.intro <= year && l.retire >= year && l.retire - year <= 10).sort((a, b) => a.retire - b.retire);
+  const rows: HTMLElement[] = [];
+  for (const l of leaving) rows.push(listRow({ icon: uiIcon('clock', 14), title: l.name, sub: `sold until ${l.retire} (${l.retire - year} more year${l.retire - year === 1 ? '' : 's'}); bought trains keep running`, value: `${l.maxSpeed} km/h` }));
+  for (const l of upcoming.slice(0, 5)) rows.push(listRow({ icon: uiIcon('star', 14), title: l.name, sub: `available from ${l.intro} · ${l.power} kW · ${fmtMoney(l.price)}`, value: `${l.maxSpeed} km/h` }));
+  return h('div', { className: 'list' }, ...rows, rows.length ? null : h('div', { className: 'hint' }, 'No changes to the catalogue ahead.'));
+}
+
 function perfTone(p: PerfInfo): Tone {
   return p.rating === 'strong' ? 'ok' : p.rating === 'ok' ? 'info' : 'warn';
 }
@@ -53,7 +63,8 @@ export function registerTrainPanels(host: PanelHost): void {
     if (!train) return { el: host.frame(host.header('Train'), host.body(emptyState('This train no longer exists.'))), update() {} };
 
     const statusBadge = h('span');
-    const statusText = h('span', { className: 'grow' });
+    const statusText = h('div', { className: 'note' });
+    const statusActions = h('span', { className: 'row' });
     const kpiWrap = h('div');
     const consist = h('div', { className: 'consist' });
     const perfEl = h('div', { className: 'note' });
@@ -61,6 +72,10 @@ export function registerTrainPanels(host: PanelHost): void {
     const stopBtn = button('', () => report(game, game.cmd.stopTrain(id)), 'btn small');
     const resumeBtn = button(t('resume'), () => report(game, game.cmd.resumeTrain(id), 'Train resumed'), 'btn small primary');
     const refitBtn = button([uiIcon('edit', 14), 'Refit / replace'], () => host.push('depot', depotArgForRefit(id)), 'btn small');
+    const againBtn = button([uiIcon('plus', 14), 'Buy same again'], () => {
+      const r = game.cmd.buyTrain(train.lineId, train.loco, train.wagons.map((w) => w.spec));
+      if (report(game, r, 'Train bought with the same consist')) openEntity(game, host, 'train', r.id!, false);
+    }, 'btn small', 'Buy a new train with this locomotive and wagons for the same line');
     const controlHint = h('div', { className: 'hint' });
     const lineSelect = h('select', { attrs: { 'aria-label': 'Assigned line' }, onChange: () => report(game, game.cmd.assignTrain(id, Number(lineSelect.value)), 'Line assigned') });
     const lineLink = h('button', { className: 'btn small ghost', type: 'button', onClick: () => train.lineId >= 0 && openEntity(game, host, 'line', train.lineId) });
@@ -97,10 +112,10 @@ export function registerTrainPanels(host: PanelHost): void {
     const el = host.frame(
       host.header(train.name, { eyebrow: t('train'), actions: [renameBtn, goBtn] }),
       host.body(
-        h('div', { className: 'row' }, statusBadge, statusText),
+        h('div', { className: 'status' }, h('div', { className: 'row between' }, statusBadge, statusActions), statusText),
         kpiWrap,
         sectionMeta('Consist', consistMeta, consist, perfEl, cargoList),
-        section('Control', row(stopBtn, resumeBtn, refitBtn), controlHint, row(h('span', { className: 'muted' }, t('assignTo')), h('div', { className: 'grow' }, lineSelect), lineLink)),
+        section('Control', row(stopBtn, resumeBtn, refitBtn, againBtn), controlHint, row(h('span', { className: 'muted' }, t('assignTo')), h('div', { className: 'grow' }, lineSelect), lineLink)),
         section('Statistics', statsWrap),
         section('Profit, last 12 months', chartWrap),
       ),
@@ -127,6 +142,25 @@ export function registerTrainPanels(host: PanelHost): void {
         clear(statusBadge);
         statusBadge.appendChild(badge(st.tone, st.short));
         statusText.textContent = st.text + (train.stopAtNext ? ' · stopping at the next station' : '');
+        clear(statusActions);
+        // cause → action: the most likely fix, one click away
+        if (train.state === TrainState.Moving && train.blockedTicks > 30) {
+          statusActions.append(
+            button([uiIcon('doubletrack', 14), 'Double track'], () => {
+              const p = trainHeadWorld(game.state, game.rt, train, poseScratch);
+              game.cam.centerOn(p.x, p.y);
+              game.setTool('upgrade');
+            }, 'btn small', 'Single track with trains in both directions? Add a second track where they meet.'),
+          );
+        } else if (train.state === TrainState.NoRoute) {
+          statusActions.append(
+            button([uiIcon('locate', 14), 'Show'], () => {
+              const p = trainHeadWorld(game.state, game.rt, train, poseScratch);
+              game.cam.centerOn(p.x, p.y);
+            }, 'btn small'),
+          );
+          if (line) statusActions.append(button('Open line', () => openEntity(game, host, 'line', line.id), 'btn small'));
+        }
       }
       const info = consistInfo(train);
       const kk = `${Math.round(train.speed)}|${trainLoad(train)}|${Math.round(train.profitLastMonth)}|${Math.round(train.reliability * 100)}`;
@@ -173,6 +207,8 @@ export function registerTrainPanels(host: PanelHost): void {
       refitBtn.disabled = !stopped;
       const canAssign = stopped || train.state === TrainState.NoRoute || train.state === TrainState.WaitDepart;
       lineSelect.disabled = !canAssign;
+      againBtn.disabled = !line || train.wagons.length === 0;
+      againBtn.title = !line ? 'Assign a line first' : train.wagons.length === 0 ? 'Add wagons first' : `Buy a copy for ${line.name}`;
       controlHint.textContent = stopped ? 'The train is stopped: refit it, change its line or resume.' : 'Stop the train at a station to refit it or change its line.';
       lineLink.textContent = line ? 'Open line' : '';
       lineLink.hidden = !line;
@@ -260,6 +296,8 @@ export function registerTrainPanels(host: PanelHost): void {
     const perfWrap = h('div');
     const priceEl = h('span', { className: 'price' });
     const warnEl = h('div', { className: 'note warn-text' });
+    const qtySel = h('select', { attrs: { 'aria-label': 'Quantity' }, title: 'How many identical trains to buy' });
+    for (let n = 1; n <= 5; n++) qtySel.appendChild(h('option', { value: String(n) }, `×${n}`));
     const actionBtn = button(refit ? 'Apply refit' : 'Buy train', () => commit(), 'btn primary');
 
     const commit = () => {
@@ -269,9 +307,22 @@ export function registerTrainPanels(host: PanelHost): void {
         host.back();
         return;
       }
-      const r = game.cmd.buyTrain(draft.lineId, draft.loco, draft.wagons);
-      if (!report(game, r, 'Train bought')) return;
-      game.select('train', r.id!);
+      const qty = Number(qtySel.value) || 1;
+      let bought = 0;
+      let lastId = -1;
+      let reason = '';
+      for (let i = 0; i < qty; i++) {
+        const r = game.cmd.buyTrain(draft.lineId, draft.loco, draft.wagons);
+        if (!r.ok) {
+          reason = r.reason ?? 'cannot buy';
+          break;
+        }
+        bought++;
+        lastId = r.id!;
+      }
+      if (bought === 0) return toast(game, 'warn', reason);
+      toast(game, bought < qty ? 'warn' : 'good', bought < qty ? `${bought} of ${qty} trains bought (${reason})` : bought === 1 ? 'Train bought' : `${bought} trains bought`);
+      game.select('train', lastId);
     };
 
     const renderLocos = () => {
@@ -427,9 +478,10 @@ export function registerTrainPanels(host: PanelHost): void {
         section('Consist', consist, consistHint),
         section('Wagon catalogue', catalog),
         section('Summary', summary, perfWrap),
+        collapsible('Coming and going', false, vehicleTimeline(year)),
         h('div', { className: 'hint' }, 'Heavier trains accelerate slower. Match wagon types to the cargo available on the line.'),
       ),
-      host.foot(h('div', { className: 'grow' }, priceEl, warnEl), actionBtn),
+      host.foot(h('div', { className: 'grow' }, priceEl, warnEl), refit ? null : qtySel, actionBtn),
     );
     let footKey = '';
     return {

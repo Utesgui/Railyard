@@ -19,11 +19,24 @@ export function installInput(game: Game, hooks: InputHooks): void {
   let dragged = false;
   let downButton = -1;
   const held = new Set<string>();
+  // two-finger pinch: zoom around the midpoint, no panning while both fingers are down
+  const touches = new Map<number, { x: number; y: number }>();
+  let pinch: { dist: number; zoom: number } | null = null;
 
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   canvas.addEventListener('auxclick', (e) => e.preventDefault());
 
   canvas.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch') {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size === 2) {
+        const [a, b] = [...touches.values()];
+        pinch = { dist: Math.hypot(a.x - b.x, a.y - b.y), zoom: game.cam.zoom };
+        downButton = -1;
+        panning = false;
+        return;
+      }
+    }
     if (e.button === 1) e.preventDefault(); // no browser autoscroll
     canvas.setPointerCapture(e.pointerId);
     downX = lastX = e.clientX;
@@ -34,6 +47,17 @@ export function installInput(game: Game, hooks: InputHooks): void {
   });
 
   canvas.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && touches.size === 2) {
+        const [a, b] = [...touches.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        const rect = canvas.getBoundingClientRect();
+        const z = Math.max(0.5, Math.min(3, (pinch.zoom * dist) / Math.max(1, pinch.dist)));
+        game.cam.zoomAt((a.x + b.x) / 2 - rect.left, (a.y + b.y) / 2 - rect.top, z);
+        return;
+      }
+    }
     const dx = e.clientX - lastX;
     const dy = e.clientY - lastY;
     lastX = e.clientX;
@@ -54,6 +78,14 @@ export function installInput(game: Game, hooks: InputHooks): void {
   });
 
   const up = (e: PointerEvent) => {
+    if (e.pointerType === 'touch') {
+      touches.delete(e.pointerId);
+      if (pinch) {
+        if (touches.size < 2) pinch = null;
+        downButton = -1;
+        return;
+      }
+    }
     canvas.classList.remove('panning');
     const button = downButton;
     downButton = -1;

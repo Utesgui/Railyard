@@ -12,7 +12,7 @@ import { fmtInt, fmtMoney, fmtMoneyShort } from '../format';
 import { barChart, lineChart } from '../chart';
 import { monthKey, monthLabels } from './stats';
 import { t } from '../../i18n/t';
-import { confirmDialog, showAchievements, showHelp } from '../dialogs';
+import { confirmDialog, showAchievements, showHelp, showYearSummary } from '../dialogs';
 import { ACHIEVEMENTS } from '../../sim/achievements';
 import { sfx } from '../sfx';
 import { cargoIcon, uiIcon } from '../icons';
@@ -22,8 +22,16 @@ import { lineColor, openEntity, report, toast } from './shared';
 
 export { applyUiScale } from '../scale';
 
+/** "Save 1 · 15/09/2026 · 1903, $510k, 3 trains" */
+export function slotSummary(info: { name: string; savedAt: string; year?: number; money?: number; trains?: number }): string {
+  const when = info.savedAt ? new Date(info.savedAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '';
+  const game = info.year !== undefined ? `${info.year} · ${fmtMoneyShort(info.money ?? 0)} · ${info.trains ?? 0} train${info.trains === 1 ? '' : 's'} · ` : '';
+  return `${game}${info.name}${when ? ` · ${when}` : ''}`;
+}
+
 function field(label: string, control: Node, hint?: string): HTMLElement {
-  return h('div', { className: 'field-row' }, h('span', { className: 'lbl' }, label), h('div', { className: 'grow' }, control), hint ? h('span', { className: 'hint' }, hint) : null);
+  // the hint takes its own line so long option labels never squeeze the control
+  return h('div', { className: 'field-row' }, h('span', { className: 'lbl' }, label), h('div', { className: 'grow' }, control), hint ? h('span', { className: 'hint field-hint' }, hint) : null);
 }
 
 export function registerSystemPanels(host: PanelHost): void {
@@ -50,6 +58,7 @@ export function registerSystemPanels(host: PanelHost): void {
       host.body(
         kpiWrap,
         section('Loan', row(borrowBtn, repayBtn, loanHint)),
+        row(button([uiIcon('star', 14), 'Year report'], () => showYearSummary(game), 'btn small', 'Report of the last completed year')),
         sectionMeta('Cash at month end', `last ${mem.months} months`, cashWrap),
         sectionMeta('Net result per month', `last ${mem.months} months`, netWrap),
         section('Monthly summary', tableWrap, h('div', { className: 'hint' }, 'The first row is the running month. Net = revenue minus all costs, including purchases and construction.')),
@@ -204,7 +213,9 @@ export function registerSystemPanels(host: PanelHost): void {
         const delBtn = button(uiIcon('trash', 14), () => confirmDialog(game, `Delete slot ${slot}?`, 'The saved game is removed permanently.', () => { deleteSlot(slot); renderSlots(); }, 'Delete', true), 'btn icon small ghost', 'Delete save');
         delBtn.setAttribute('aria-label', `Delete slot ${slot}`);
         delBtn.hidden = !info;
-        slotsEl.appendChild(listRow({ icon: uiIcon('save', 16), title: `${t('slot')} ${slot}`, sub: info ? `${info.name} · ${new Date(info.savedAt).toLocaleString()}` : t('empty'), trailing: [saveBtn, loadBtn, delBtn] }));
+        const rowEl = listRow({ icon: uiIcon('save', 16), title: `${t('slot')} ${slot}`, sub: info ? slotSummary(info) : t('empty'), trailing: [saveBtn, loadBtn, delBtn] });
+        rowEl.classList.add('wrap');
+        slotsEl.appendChild(rowEl);
       }
     };
     renderSlots();
@@ -244,6 +255,13 @@ export function registerSystemPanels(host: PanelHost): void {
       muteBtn.setAttribute('aria-pressed', String(sfx.volume === 0));
     };
     syncVolume();
+    const yearReportSel = h('select', { attrs: { 'aria-label': 'Year report' }, onChange: () => setSetting('yearReport', yearReportSel.value) });
+    for (const [v, label] of [['slow', 'Dialog at 1x/2x, alert when faster'], ['always', 'Always a dialog'], ['never', 'Alert only']] as [string, string][]) {
+      const opt = h('option', { value: v }, label);
+      if (getSetting<string>('yearReport', 'slow') === v) opt.selected = true;
+      yearReportSel.appendChild(opt);
+    }
+    const cargoToggle = h('input', { type: 'checkbox', checked: game.ui.showCargo, onChange: () => (game.ui.showCargo = cargoToggle.checked) });
     const catchToggle = h('input', { type: 'checkbox', checked: game.ui.showCatchment, onChange: () => (game.ui.showCatchment = catchToggle.checked) });
     const linesToggle = h('input', { type: 'checkbox', checked: game.ui.showLines, onChange: () => (game.ui.showLines = linesToggle.checked) });
     const newGameBtn = button([uiIcon('play', 14), t('newGame')], () => {
@@ -260,7 +278,7 @@ export function registerSystemPanels(host: PanelHost): void {
         section(t('newGame'), field(t('seed'), row(seedInput, button('Random', () => (seedInput.value = String((Math.random() * 0xffffffff) >>> 0)), 'btn small'))), field('Start money', moneySel), field('Map size', sizeSel), row(newGameBtn)),
         section('Saves', slotsEl, row(button([uiIcon('save', 14), 'Quick save'], () => game.quickSave(), 'btn small', 'Ctrl+S'), button('Quick load', () => confirmDialog(game, 'Load the quick save?', 'Unsaved progress in the current game is lost.', () => game.quickLoad(), 'Load'), 'btn small', 'Ctrl+L'), button(`${t('export')} file`, () => exportToFile(game.state, `railyard-${game.state.world.seed}`), 'btn small'), button(`${t('import')} file`, () => importInput.click(), 'btn small'), importInput), field(t('autosave'), autosaveSel)),
         section('Sound', field('Volume', row(h('div', { className: 'grow' }, volume), volumeVal, muteBtn))),
-        section('Display', field('UI size', scaleSel, 'HUD only, the map is unaffected'), h('label', { className: 'row' }, catchToggle, ' Show station coverage on the map (H)'), h('label', { className: 'row' }, linesToggle, ' Draw lines on the map')),
+        section('Display', field('UI size', scaleSel, 'HUD only, the map is unaffected'), field('Year report', yearReportSel, 'the report is always available from the alerts'), h('label', { className: 'row' }, catchToggle, ' Show station coverage on the map (H)'), h('label', { className: 'row' }, linesToggle, ' Draw lines on the map'), h('label', { className: 'row' }, cargoToggle, ' Show waiting cargo at stations on the map')),
         section('Progress', row(button([uiIcon('star', 14), `Achievements (${game.state.achievements.length}/${ACHIEVEMENTS.length})`], () => showAchievements(game), 'btn small'), button('Show tutorial again', () => { game.state.tutorialStep = 0; toast(game, 'info', 'Tutorial restarted'); }, 'btn small'))),
         section('Help', row(button([uiIcon('help', 14), 'Keyboard & mouse'], () => showHelp(game), 'btn small')), h('div', { className: 'hint' }, 'Railyard is a browser game: everything is saved in this browser only. Export a file to keep a game.')),
       ),
@@ -269,7 +287,7 @@ export function registerSystemPanels(host: PanelHost): void {
   });
 
   host.register('alerts', (game: Game, host) => {
-    type Filter = 'all' | 'warn' | 'money' | 'info';
+    type Filter = 'all' | 'warn' | 'good' | 'info';
     const mem = host.state<{ filter: Filter }>('alerts', () => ({ filter: 'all' }));
     const seenAtOpen = game.state.notificationsSeen;
     game.cmd.markNotificationsSeen();
@@ -281,17 +299,18 @@ export function registerSystemPanels(host: PanelHost): void {
       const ic = uiIcon(n.kind === 'warn' ? 'warning' : n.kind === 'money' ? 'coin' : n.kind === 'good' ? 'check' : 'info', 16, `ico ${cls}`);
       return ic;
     };
-    const matches = (n: Notification) => mem.filter === 'all' || (mem.filter === 'money' ? n.kind === 'money' || n.kind === 'good' : n.kind === mem.filter);
+    const isKind = (n: Notification, f: Filter) => f === 'all' || (f === 'good' ? n.kind === 'money' || n.kind === 'good' : n.kind === f);
+    const matches = (n: Notification) => isKind(n, mem.filter);
     const renderTabs = () => {
       const ns = game.state.notifications;
-      const count = (f: Filter) => ns.filter((n) => f === 'all' || (f === 'money' ? n.kind === 'money' || n.kind === 'good' : n.kind === f)).length;
+      const count = (f: Filter) => ns.filter((n) => isKind(n, f)).length;
       clear(tabBar);
       tabBar.appendChild(
         tabs(
           [
             { id: 'all', label: 'All', count: count('all') },
             { id: 'warn', label: 'Warnings', count: count('warn') },
-            { id: 'money', label: 'Money', count: count('money') },
+            { id: 'good', label: 'Company', count: count('good') },
             { id: 'info', label: 'Info', count: count('info') },
           ],
           mem.filter,
@@ -318,13 +337,20 @@ export function registerSystemPanels(host: PanelHost): void {
         if (!matches(n)) continue;
         const unread = n.id > seenAtOpen;
         const when = formatDate(dayToDate(n.day, s.startYear));
+        const yearMatch = /^(\d{4}): /.exec(n.text);
+        const action =
+          n.focus !== undefined && n.focus >= 0
+            ? button('Show', () => game.focusTile(n.focus!), 'btn small ghost', 'Jump to the location')
+            : yearMatch
+              ? button('Report', () => showYearSummary(game, Number(yearMatch[1])), 'btn small ghost', 'Open the year report')
+              : h('span');
         list.appendChild(
           h(
             'div',
             { className: 'notif' + (unread ? ' unread' : '') },
             iconFor(n),
             h('div', { className: 'text' }, n.text),
-            n.focus !== undefined && n.focus >= 0 ? button('Show', () => game.focusTile(n.focus!), 'btn small ghost', 'Jump to the location') : h('span'),
+            action,
             h('div', { className: 'when' }, when, unread ? [' · ', badge('info', 'new')] : null),
           ),
         );

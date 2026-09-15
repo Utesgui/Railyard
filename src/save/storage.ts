@@ -1,5 +1,6 @@
 import type { GameState } from '../core/types';
 import { decodeState, encodeState } from './codec';
+import { tickToYear } from '../core/time';
 
 const PREFIX = 'railyard:';
 export const AUTOSAVE_SLOT = 'autosave';
@@ -9,6 +10,11 @@ export const SLOTS = ['1', '2', '3', '4', '5'] as const;
 export interface SlotInfo {
   name: string;
   savedAt: string;
+  /** small preview written next to the save (absent for saves from older versions) */
+  year?: number;
+  money?: number;
+  trains?: number;
+  seed?: number;
 }
 
 function key(slot: string): string {
@@ -18,6 +24,7 @@ function key(slot: string): string {
 export function saveToSlot(slot: string, state: GameState, name: string): boolean {
   try {
     localStorage.setItem(key(slot), encodeState(state, name));
+    localStorage.setItem(PREFIX + 'meta:' + slot, JSON.stringify({ year: tickToYear(state.tick, state.startYear), money: Math.round(state.economy.money), trains: state.trains.length, seed: state.world.seed }));
     return true;
   } catch (e) {
     console.warn('save failed', e);
@@ -42,8 +49,10 @@ export function slotInfo(slot: string): SlotInfo | null {
     if (!json) return null;
     // cheap header parse: the file starts with {"schema":N,"savedAt":"...","name":"..."
     const m = /"savedAt":"([^"]*)","name":"([^"]*)"/.exec(json.slice(0, 200));
-    if (!m) return { name: 'save', savedAt: '' };
-    return { name: m[2], savedAt: m[1] };
+    const info: SlotInfo = m ? { name: m[2], savedAt: m[1] } : { name: 'save', savedAt: '' };
+    const meta = localStorage.getItem(PREFIX + 'meta:' + slot);
+    if (meta) Object.assign(info, JSON.parse(meta) as Partial<SlotInfo>);
+    return info;
   } catch {
     return null;
   }
@@ -52,6 +61,7 @@ export function slotInfo(slot: string): SlotInfo | null {
 export function deleteSlot(slot: string): void {
   try {
     localStorage.removeItem(key(slot));
+    localStorage.removeItem(PREFIX + 'meta:' + slot);
   } catch {
     /* ignore */
   }

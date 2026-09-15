@@ -15,6 +15,8 @@ interface FleetMemory {
   q: string;
   sort: SortKey;
   filter: Filter;
+  /** problem chip within the Problems filter ('' = all problems) */
+  cause: string;
 }
 
 const SORTS: [SortKey, string][] = [
@@ -29,7 +31,8 @@ const SORTS: [SortKey, string][] = [
 /** Fleet overview: every train with its status, filters, sorting and a shortcut to the depot. */
 export function registerFleetPanel(host: PanelHost): void {
   host.register('fleet', (game: Game, host) => {
-    const mem = host.state<FleetMemory>('fleet', () => ({ q: '', sort: 'status', filter: 'all' }));
+    const mem = host.state<FleetMemory>('fleet', () => ({ q: '', sort: 'status', filter: 'all', cause: '' }));
+    const chips = h('div', { className: 'row chips' });
     const search = h('input', { type: 'search', placeholder: 'Search trains or lines', value: mem.q, attrs: { 'aria-label': 'Search trains' }, onInput: () => { mem.q = search.value; rebuild(); } });
     const sortSel = h('select', { attrs: { 'aria-label': 'Sort by' }, onChange: () => { mem.sort = sortSel.value as SortKey; rebuild(); } });
     for (const [k, label] of SORTS) {
@@ -40,7 +43,7 @@ export function registerFleetPanel(host: PanelHost): void {
     const tabBar = h('div');
     const kpiWrap = h('div');
     const list = h('div', { className: 'list' });
-    const body = host.body(kpiWrap, h('div', { className: 'row' }, h('div', { className: 'grow' }, search), sortSel), tabBar, list);
+    const body = host.body(kpiWrap, h('div', { className: 'row' }, h('div', { className: 'grow' }, search), sortSel), tabBar, chips, list);
     const buyBtn = button('Buy train', () => host.push('depot', -1), 'btn primary');
     const el = host.frame(host.header('Fleet', { eyebrow: 'Company' }), body, host.foot(h('span', { className: 'grow hint' }, 'Click a train for details'), buyBtn));
 
@@ -58,6 +61,7 @@ export function registerFleetPanel(host: PanelHost): void {
     const matches = (tr: Train): boolean => {
       const c = trainProblem(game.state, tr, game.rt);
       if (mem.filter === 'problems' && !c) return false;
+      if (mem.filter === 'problems' && mem.cause && c !== mem.cause) return false;
       if (mem.filter === 'stopped' && tr.state !== TrainState.Stopped) return false;
       if (!mem.q) return true;
       const q = mem.q.toLowerCase();
@@ -110,6 +114,18 @@ export function registerFleetPanel(host: PanelHost): void {
           },
         ),
       );
+      clear(chips);
+      chips.hidden = mem.filter !== 'problems';
+      if (mem.filter === 'problems') {
+        const byCause = new Map<string, number>();
+        for (const tr of s.trains) {
+          const p = trainProblem(s, tr, rt);
+          if (p) byCause.set(p, (byCause.get(p) ?? 0) + 1);
+        }
+        if (mem.cause && !byCause.has(mem.cause)) mem.cause = '';
+        const chip = (label: string, cause: string, n: number) => h('button', { className: 'btn small toggle', type: 'button', attrs: { 'aria-pressed': String(mem.cause === cause) }, onClick: () => { mem.cause = cause; rebuild(); } }, label, h('span', { className: 'count' }, String(n)));
+        chips.append(chip('All problems', '', [...byCause.values()].reduce((a, b) => a + b, 0)), ...[...byCause].sort((a, b) => b[1] - a[1]).map(([cause, n]) => chip(cause, cause, n)));
+      }
       clear(list);
       if (s.trains.length === 0) {
         list.appendChild(
@@ -177,7 +193,7 @@ export function registerFleetPanel(host: PanelHost): void {
       const lk =
         s.trains
           .map((tr) => `${tr.id}:${tr.name}:${tr.lineId}:${tr.state}:${tr.blockedTicks > 60 ? 'b' : ''}:${Math.round(tr.profitLastMonth)}:${trainProblem(s, tr, rt) ?? ''}:${Math.round(trainAgeYears(s, tr))}`)
-          .join('|') + `#${mem.q}#${mem.sort}#${mem.filter}#${s.lines.map((l) => l.name).join(',')}`;
+          .join('|') + `#${mem.q}#${mem.sort}#${mem.filter}#${mem.cause}#${s.lines.map((l) => l.name).join(',')}`;
       if (lk !== listKey) {
         listKey = lk;
         rebuild();

@@ -10,13 +10,18 @@ import { registerLinePanels } from './panels/linePanel';
 import { registerStationPanel } from './panels/stationPanel';
 import { registerSystemPanels } from './panels/systemPanels';
 import { registerContractsPanel } from './panels/contractsPanel';
+import { registerWorldPanel } from './panels/worldPanel';
 import { registerTrainPanels } from './panels/trainPanel';
 import { createTools } from './tools';
 import type { SelectionKind } from './uiState';
 import { closeDialog, initDialogs, isDialogOpen, showAchievements, showGameOver, showHelp, showYearSummary } from './dialogs';
 import { createContextBar } from './context';
 import { applyUiScale, currentUiScale } from './scale';
+import { getSetting } from '../save/storage';
 import { sfx } from './sfx';
+import { fmtInt, fmtMoney } from './format';
+import { CARGO, CARGO_COUNT } from '../data/cargo';
+import { totalWaiting } from '../sim/station';
 
 const ENTITY_PANELS: SelectionKind[] = ['station', 'line', 'train', 'industry', 'town'];
 
@@ -42,6 +47,7 @@ export class UI {
     registerTrainPanels(this.panels);
     registerSystemPanels(this.panels);
     registerContractsPanel(this.panels);
+    registerWorldPanel(this.panels);
 
     this.topbar = createTopbar(game, this.panels);
     document.getElementById('topbar')!.appendChild(this.topbar.el);
@@ -50,7 +56,12 @@ export class UI {
       minimapShown: () => this.hud.classList.contains('show-minimap'),
     });
     document.getElementById('toolbar')!.appendChild(this.toolbar.el);
-    installToasts(game, document.getElementById('toasts')!);
+    installToasts(game, document.getElementById('toasts')!, {
+      actionFor: (n) => {
+        const m = /^(\d{4}): /.exec(n.text);
+        return m ? { label: 'Report', run: () => showYearSummary(game, Number(m[1])) } : null;
+      },
+    });
     this.context = createContextBar(game, document.getElementById('context')!);
     this.tooltip = document.getElementById('tooltip')!;
     applyUiScale(currentUiScale());
@@ -73,7 +84,10 @@ export class UI {
       this.toolbar.update();
     });
     game.events.on('year', () => {
-      if (game.state.tick > 0) showYearSummary(game);
+      if (game.state.tick === 0) return;
+      const mode = getSetting<string>('yearReport', 'slow');
+      // at high speed the modal report interrupts every ~45 s of real time; the alert (with Report) stays
+      if (mode === 'always' || (mode === 'slow' && game.state.speed <= 2)) showYearSummary(game);
     });
     game.events.on('gameOver', () => showGameOver(game, () => this.panels.open('settings')));
 
@@ -120,6 +134,9 @@ export class UI {
       if (this.panels.isOpen('station')) this.panels.update();
     });
 
+    // zoom buttons next to the minimap (touch devices have no wheel or +/- keys)
+    document.getElementById('zoom-in')?.addEventListener('click', () => game.cam.zoomStep(game.cam.vw / 2, game.cam.vh / 2, 1));
+    document.getElementById('zoom-out')?.addEventListener('click', () => game.cam.zoomStep(game.cam.vw / 2, game.cam.vh / 2, -1));
     // minimap click → center camera
     const mm = document.getElementById('minimap') as HTMLCanvasElement;
     mm.addEventListener('pointerdown', (e) => {
@@ -155,7 +172,18 @@ export class UI {
     const st = rt.stationAt[tile];
     const ind = rt.industryAt[tile];
     const town = rt.townAt[tile];
-    if (st >= 0) text = `Station: ${rt.stationById.get(st)?.name}`;
+    if (st >= 0) {
+      const station = rt.stationById.get(st);
+      text = `Station: ${station?.name}`;
+      if (station) {
+        const parts: string[] = [];
+        for (let c = 0; c < CARGO_COUNT; c++) {
+          const a = totalWaiting(station, c);
+          if (a >= 1) parts.push(`${fmtInt(a)} ${CARGO[c].unit} ${CARGO[c].name.toLowerCase()}`);
+        }
+        if (parts.length) text += ` · waiting: ${parts.slice(0, 4).join(', ')}${parts.length > 4 ? ` +${parts.length - 4}` : ''}`;
+      }
+    }
     else if (ind >= 0) text = `${rt.industryById.get(ind)?.name}`;
     else if (town >= 0) text = `${rt.townById.get(town)?.name}`;
     else text = TERRAIN_NAMES[g.state.world.terrain[tile]];
@@ -183,6 +211,11 @@ export class UI {
       }
       if (k === 'l') {
         g.quickLoad();
+        return true;
+      }
+      if (k === 'z') {
+        const r = g.cmd.undoLastBuild();
+        g.events.emit('notify', { id: 0, day: 0, kind: r.ok ? 'good' : 'warn', text: r.ok ? `Track removed, ${fmtMoney(r.refund ?? 0)} refunded` : `Cannot undo: ${r.reason ?? 'nothing to undo'}` });
         return true;
       }
       return false;
@@ -232,6 +265,9 @@ export class UI {
       case 'c':
         togglePanel('contracts');
         return true;
+      case 'w':
+        togglePanel('world');
+        return true;
       case 'a':
         togglePanel('alerts');
         return true;
@@ -252,6 +288,15 @@ export class UI {
       case '-':
         g.cam.zoomStep(g.cam.vw / 2, g.cam.vh / 2, -1);
         return true;
+      case 'enter':
+        // keyboard users can select whatever the mouse hovers (the canvas itself is not focusable)
+        if (g.ui.tool === 'inspect' && g.ui.hoverTile >= 0) {
+          const w = g.state.world.width;
+          const t = g.ui.hoverTile;
+          tools.inspect.onClick(t, {} as PointerEvent, ((t % w) + 0.5) * 32, (((t / w) | 0) + 0.5) * 32);
+          return true;
+        }
+        return false;
       case 'escape':
         if (g.ui.tool !== 'inspect') tools[g.ui.tool].onCancel();
         else if (this.panels.current) {

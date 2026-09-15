@@ -1,6 +1,6 @@
 # Railyard – UI/UX-Audit 2 (nach dem Redesign)
 
-Stand: 15. September 2026, Commit `27f7647` auf `main`. Vorgänger: [UI-UX-AUDIT.md](UI-UX-AUDIT.md), Umsetzung dokumentiert in [UI-REDESIGN.md](UI-REDESIGN.md).
+Stand: 15. September 2026, Commit `27f7647` auf `main`. **Umsetzungsstand:** alle Muss- und Sollte-Punkte sowie die Kann-Punkte ohne Schemaänderung sind umgesetzt, siehe Abschnitt „Audit 2 implemented“ in [UI-REDESIGN.md](UI-REDESIGN.md); offen bleiben die dort genannten Grenzen. Vorgänger: [UI-UX-AUDIT.md](UI-UX-AUDIT.md), Umsetzung dokumentiert in [UI-REDESIGN.md](UI-REDESIGN.md).
 
 ## Methode und Grenzen
 

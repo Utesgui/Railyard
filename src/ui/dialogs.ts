@@ -9,6 +9,7 @@ import { button, h, kpi, kpis, kv, kvGrid, listRow, section } from './dom';
 import { fmtInt, fmtMoney } from './format';
 import { uiIcon } from './icons';
 import { AUTOSAVE_SLOT, QUICK_SLOT, SLOTS, loadFromSlot, slotInfo } from '../save/storage';
+import { slotSummary } from './panels/systemPanels';
 
 type Child = Node | string | number | null | undefined | false;
 
@@ -237,12 +238,19 @@ export function promptDialog(_game: Game, title: string, value: string, onOk: (v
   input.select();
 }
 
-/** End-of-year report: the last twelve completed months. */
-export function showYearSummary(game: Game): void {
+/** Year report; defaults to the last completed year, older years as far as the 36-month ledger reaches. */
+export function showYearSummary(game: Game, wantedYear?: number): void {
   const s = game.state;
   const d = tickToDate(s.tick, s.startYear);
-  const year = d.year - 1;
-  const months = s.economy.ledger.slice(1, 1 + MONTHS_PER_YEAR);
+  const year = wantedYear ?? d.year - 1;
+  // ledger[0] is the running month; completed months of `year` start `d.month` entries back plus 12 per older year
+  const back = (d.year - 1 - year) * MONTHS_PER_YEAR + d.month;
+  const months = s.economy.ledger.slice(1 + back, 1 + back + MONTHS_PER_YEAR).filter((l) => l.year === year);
+  if (months.length === 0) {
+    showDialog({ title: `${year} in review`, body: h('p', null, 'No ledger data is kept for that year any more (the last 36 months are stored).') });
+    return;
+  }
+  const complete = months.length === MONTHS_PER_YEAR;
   let revenue = 0;
   let costs = 0;
   let running = 0;
@@ -263,19 +271,20 @@ export function showYearSummary(game: Game): void {
   }
   const net = revenue - costs;
   const lineNet = (l: { profitHistory: number[] }) => l.profitHistory.slice(0, MONTHS_PER_YEAR).reduce((x, y) => x + y, 0);
-  const bestLine = [...s.lines].sort((a, b) => lineNet(b) - lineNet(a))[0];
+  const bestLine = wantedYear === undefined || back === 0 ? [...s.lines].sort((a, b) => lineNet(b) - lineNet(a))[0] : undefined;
   const served = servedPopulation(s, game.rt);
   const mapPop = s.towns.reduce((a, t) => a + t.population, 0);
   showDialog({
     title: `${year} in review`,
     body: [
-      kpis(kpi('Revenue', fmtMoney(revenue)), kpi('Costs', fmtMoney(costs)), kpi('Net result', fmtMoney(net), { tone: net >= 0 ? 'pos' : 'neg' })),
+      complete ? null : h('p', { className: 'muted' }, `Only ${months.length} months of ${year} are still in the ledger.`),
+      kpis(kpi('Revenue', fmtMoney(revenue)), kpi('Costs', fmtMoney(costs)), kpi('Operating result', fmtMoney(revenue - running - maint - interest), { tone: revenue - running - maint - interest >= 0 ? 'pos' : 'neg', sub: 'before investments' }), kpi('Net result', fmtMoney(net), { tone: net >= 0 ? 'pos' : 'neg', sub: 'incl. construction and vehicles' })),
       section(
         'Costs by category',
         kvGrid(kv('Train running', fmtMoney(running)), kv('Maintenance', fmtMoney(maint)), kv('Construction', fmtMoney(construction)), kv('Vehicles', fmtMoney(vehicles)), kv('Loan interest', fmtMoney(interest)), kv('Other', fmtMoney(other))),
       ),
       section(
-        'Company',
+        'Company today',
         kvGrid(
           kv('Cash', fmtMoney(s.economy.money), s.economy.money < 0 ? 'warn' : ''),
           kv('Loan', fmtMoney(s.economy.loan)),
@@ -298,7 +307,7 @@ export function showGameOver(game: Game, openSettings: () => void): void {
   const saves: { slot: string; label: string }[] = [];
   const add = (slot: string, label: string) => {
     const info = slotInfo(slot);
-    if (info) saves.push({ slot, label: `${label} · ${info.name} · ${new Date(info.savedAt).toLocaleString()}` });
+    if (info) saves.push({ slot, label: `${label} · ${slotSummary(info)}` });
   };
   add(AUTOSAVE_SLOT, 'Autosave');
   add(QUICK_SLOT, 'Quick save');
@@ -345,6 +354,8 @@ const KEYS: [string, string][] = [
   ['V', 'Fleet'],
   ['F', 'Finances'],
   ['C', 'Contracts'],
+  ['W', 'World (towns and industries)'],
+  ['A', 'Alerts'],
   ['O', 'Settings'],
   ['H', 'Show station catchment areas'],
   ['M', 'Minimap (small screens)'],
@@ -353,6 +364,9 @@ const KEYS: [string, string][] = [
   ['+ / −', 'Zoom'],
   ['Shift + click', 'Track tool: keep building from the end tile'],
   ['Middle click', 'Track tool: add a waypoint'],
+  ['Ctrl + Z', 'Undo the last track build (60 s, full refund)'],
+  ['Shift + click', 'Demolish tool: only the hovered piece instead of the segment'],
+  ['Enter', 'Select what the mouse points at'],
   ['Right click', 'Cancel / step back'],
   ['Ctrl + S / Ctrl + L', 'Quick save / quick load'],
   ['?', 'This help'],

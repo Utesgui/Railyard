@@ -93,3 +93,62 @@ test.describe('HUD', () => {
     await expect(badge).toBeHidden();
   });
 });
+
+test.describe('audit 2', () => {
+  test('Ctrl+Z takes back the last track build at full refund', async ({ page }) => {
+    await page.goto('/?seed=4242');
+    await page.waitForFunction(() => !!window.__game);
+    await page.evaluate(() => window.__game.cmd.setSpeed(0));
+    const before = await page.evaluate(() => window.__game.state.economy.money);
+    // two free tiles a few tiles apart, built with the real track tool
+    const [a, b] = await page.evaluate(() => {
+      const g = window.__game;
+      const s = g.state;
+      const w = s.world.width;
+      for (let y = 8; y < s.world.height - 8; y++)
+        for (let x = 8; x < w - 16; x++) {
+          const t = y * w + x;
+          let free = true;
+          for (let i = 0; i <= 6 && free; i++) if (g.rt.tileOcc[t + i] !== 0 || s.world.terrain[t + i] !== 1) free = false;
+          if (free) return [t, t + 6];
+        }
+      throw new Error('no free grass strip');
+    });
+    const clickTile = async (tile: number) => {
+      await page.evaluate((t) => window.__game.game.cam.centerOnTile(t), tile);
+      const pt = await page.evaluate((t) => {
+        const g = window.__game.game;
+        const w = window.__game.state.world.width;
+        return g.cam.worldToScreen(((t % w) + 0.5) * 32, (Math.floor(t / w) + 0.5) * 32);
+      }, tile);
+      const box = (await page.locator('#map').boundingBox())!;
+      await page.mouse.click(box.x + pt.sx, box.y + pt.sy);
+    };
+    await page.keyboard.press('t');
+    await clickTile(a);
+    await clickTile(b);
+    const after = await page.evaluate(() => window.__game.state.economy.money);
+    expect(after).toBeLessThan(before);
+    await expect(page.locator('#context').getByRole('button', { name: 'Undo build' })).toBeVisible();
+    await page.keyboard.press('Control+z');
+    await expect(page.locator('#toasts .toast').last()).toContainText('refunded');
+    expect(await page.evaluate(() => window.__game.state.economy.money)).toBe(before);
+    await expect(page.locator('#context').getByRole('button', { name: 'Undo build' })).toBeHidden();
+  });
+
+  test('world panel lists towns and industries and opens an entity', async ({ page }) => {
+    await page.goto('/?seed=4242');
+    await page.waitForFunction(() => !!window.__game);
+    await page.keyboard.press('w');
+    await expect(page.locator('#panel h2')).toHaveText('World');
+    const towns = await page.evaluate(() => window.__game.state.towns.length);
+    await expect(page.locator('#panel .list-row')).toHaveCount(towns);
+    await page.locator('#panel .list-row').first().click();
+    await expect(page.locator('#panel .eyebrow')).toHaveText('Town');
+    await page.getByRole('button', { name: 'Back' }).click();
+    await expect(page.locator('#panel h2')).toHaveText('World');
+    await page.locator('#panel .panel-tabs button', { hasText: 'Industries' }).click();
+    const inds = await page.evaluate(() => window.__game.state.industries.length);
+    await expect(page.locator('#panel .list-row')).toHaveCount(inds);
+  });
+});

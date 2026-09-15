@@ -4,15 +4,75 @@ import { LINE_COLORS } from '../../render/palette';
 import { badge, button, clear, emptyState, h, kpi, kpis, listRow, row, section, sectionMeta, type Tone } from '../dom';
 import { fmtInt, fmtMoney, fmtMoneyShort, fmtPct } from '../format';
 import { t } from '../../i18n/t';
-import { confirmDialog, promptDialog } from '../dialogs';
+import { confirmDialog, promptDialog, showDialog } from '../dialogs';
+import { TrainState } from '../../core/types';
+import { tickToYear } from '../../core/time';
+import { locosAvailable } from '../../data/vehicles';
 import { barChart } from '../chart';
-import { cargoIcon, uiIcon } from '../icons';
+import { cargoIcon, cargoTag, uiIcon } from '../icons';
 import { CARGO, CARGO_COUNT } from '../../data/cargo';
 import { monthKey, monthLabels } from './stats';
 import type { PanelHost } from './PanelHost';
-import { lineColor, openEntity, report, trainStatus } from './shared';
+import { lineCarries, lineColor, openEntity, report, toast, trainStatus } from './shared';
+import { classCargo } from '../icons';
 
 export { stateText } from './shared';
+
+/** Bulk locomotive swap for the stopped trains of a line: pick a model, see the total from per-train quotes, apply. */
+function showReplaceLocos(game: Game, lineId: number): void {
+  const s = game.state;
+  const year = tickToYear(s.tick, s.startYear);
+  const locos = locosAvailable(year);
+  const trains = s.trains.filter((tr) => tr.lineId === lineId);
+  const stopped = trains.filter((tr) => tr.state === TrainState.Stopped);
+  let chosen = locos[0]?.id ?? -1;
+  const list = h('div', { className: 'list', attrs: { role: 'radiogroup' } });
+  const summary = h('div', { className: 'note' });
+  const render = () => {
+    clear(list);
+    for (const l of locos) {
+      list.appendChild(listRow({ icon: h('span', { className: 'radio-dot' + (l.id === chosen ? ' on' : '') }), title: `${l.name} · ${l.era}`, sub: `${l.maxSpeed} km/h · ${l.power} kW · ${l.tractiveEffort} kN · ${fmtMoney(l.runCost)}/mo`, value: fmtMoney(l.price), onClick: () => { chosen = l.id; render(); }, selected: l.id === chosen }));
+    }
+    let net = 0;
+    let applicable = 0;
+    for (const tr of stopped) {
+      const q = game.cmd.quoteRefit(tr.id, chosen, tr.wagons.map((w) => w.spec));
+      if (q.ok && q.changed) {
+        net += q.net;
+        applicable++;
+      }
+    }
+    clear(summary);
+    summary.append(
+      h('div', null, `${applicable} of ${trains.length} trains get the new locomotive now`, stopped.length < trains.length ? ` (${trains.length - stopped.length} running: use "Stop all at next station" first).` : '.'),
+      h('div', null, applicable ? `Total: ${net >= 0 ? `pay ${fmtMoney(net)}` : `receive ${fmtMoney(-net)}`} (new price minus the old locomotives' refund).` : 'Nothing to apply.'),
+    );
+  };
+  render();
+  showDialog({
+    title: 'Replace locomotives',
+    body: [h('p', { className: 'muted' }, 'Wagons and cargo stay on the trains; only the locomotive is swapped.'), list, summary],
+    actions: [
+      { label: 'Cancel' },
+      {
+        label: 'Apply',
+        kind: 'primary',
+        onClick: () => {
+          let n = 0;
+          let spent = 0;
+          for (const tr of stopped) {
+            const r = game.cmd.refitTrain(tr.id, chosen, tr.wagons.map((w) => w.spec));
+            if (r.ok && r.charged) {
+              n++;
+              spent += r.charged;
+            }
+          }
+          toast(game, n ? 'good' : 'warn', n ? `${n} locomotive${n === 1 ? '' : 's'} replaced for ${fmtMoney(spent)}` : 'No stopped train could be refitted');
+        },
+      },
+    ],
+  });
+}
 
 function lineHealth(game: Game, line: Line): { tone: Tone; text: string } {
   const trains = game.state.trains.filter((x) => x.lineId === line.id);
@@ -115,6 +175,18 @@ export function registerLinePanels(host: PanelHost): void {
     });
     const trainsEl = h('div', { className: 'list' });
     const trainsMeta = h('span');
+    const carriesEl = h('div', { className: 'row' });
+    const stopAllBtn = button('Stop all at next station', () => {
+      let n = 0;
+      for (const tr of game.state.trains) if (tr.lineId === id && tr.state !== 3 && !tr.stopAtNext && game.cmd.stopTrain(tr.id).ok) n++;
+      toast(game, n ? 'info' : 'warn', n ? `${n} train${n === 1 ? '' : 's'} will stop at the next station` : 'No running trains on this line');
+    }, 'btn small', 'Every running train of this line halts at its next stop (for refits)');
+    const resumeAllBtn = button('Resume all', () => {
+      let n = 0;
+      for (const tr of game.state.trains) if (tr.lineId === id && (tr.state === 3 || tr.stopAtNext) && game.cmd.resumeTrain(tr.id).ok) n++;
+      toast(game, n ? 'good' : 'warn', n ? `${n} train${n === 1 ? '' : 's'} resumed` : 'No stopped trains on this line');
+    }, 'btn small');
+    const replaceBtn = button([uiIcon('edit', 14), 'Replace locomotives'], () => showReplaceLocos(game, id), 'btn small', 'Swap the locomotive of every stopped train on this line in one step');
     const chartWrap = h('div');
     const cargoList = h('div', { className: 'list' });
     const renameBtn = button(uiIcon('edit', 14), () => promptDialog(game, 'Rename line', line.name, (name) => report(game, game.cmd.renameLine(id, name)) && host.refresh()), 'btn icon small ghost', 'Rename');
@@ -146,7 +218,7 @@ export function registerLinePanels(host: PanelHost): void {
         kpiWrap,
         sectionMeta('Route', routeMeta, route, row(addStopBtn, doneBtn), editHint),
         section('Settings', row(h('span', { className: 'muted' }, t('mode')), modeLoop, modePing, modeHint), colors),
-        sectionMeta(t('trains'), trainsMeta, trainsEl),
+        sectionMeta(t('trains'), trainsMeta, trainsEl, carriesEl, row(stopAllBtn, resumeAllBtn, replaceBtn)),
         section('Profit, last 12 months', chartWrap),
         sectionMeta('Cargo delivered', 'last month', cargoList),
       ),
@@ -154,6 +226,8 @@ export function registerLinePanels(host: PanelHost): void {
     );
 
     let stopsKey = '';
+    let lastEditing = false;
+    let lastInsertAt = -1;
     let trainsKey = '';
     let kpiKey = '';
     let statusKey = '';
@@ -195,16 +269,22 @@ export function registerLinePanels(host: PanelHost): void {
         );
       }
       const editing = game.ui.tool === 'line' && game.ui.editingLine === id;
+      if (editing !== lastEditing || (editing && game.ui.insertAt !== lastInsertAt)) {
+        lastEditing = editing;
+        lastInsertAt = game.ui.insertAt;
+        stopsKey = '';
+      }
       addStopBtn.hidden = editing;
       doneBtn.hidden = !editing;
-      editHint.textContent = editing ? 'Click stations on the map to append them as stops. Esc or Done when finished.' : line.stops.length < 2 ? 'A line needs at least two stops before trains can run.' : '';
+      editHint.textContent = editing ? (game.ui.insertAt >= 0 ? `Click stations on the map to insert them at position ${game.ui.insertAt + 1}. Esc or Done when finished.` : 'Click stations on the map to append them as stops. Esc or Done when finished.') : line.stops.length < 2 ? 'A line needs at least two stops before trains can run.' : '';
       editHint.hidden = !editHint.textContent;
       routeMeta.textContent = `${line.stops.length} stops · ${line.mode === 'loop' ? 'loop' : 'ping-pong'}`;
       modeLoop.setAttribute('aria-pressed', String(line.mode === 'loop'));
       modePing.setAttribute('aria-pressed', String(line.mode === 'pingpong'));
       modeHint.textContent = line.mode === 'loop' ? 'last stop → first stop' : 'trains turn around at both ends';
       colors.querySelectorAll('button').forEach((b, i) => b.setAttribute('aria-checked', String(i === line.color % LINE_COLORS.length)));
-      const sk = line.stops.map((st) => `${st.stationId}:${rt.stationById.get(st.stationId)?.name ?? ''}${st.noLoad ? 'l' : ''}${st.noUnload ? 'u' : ''}${st.fullLoad ? 'f' : ''}`).join(',') + `|${line.color}`;
+      const insertAt = editing ? game.ui.insertAt : -1;
+      const sk = line.stops.map((st) => `${st.stationId}:${rt.stationById.get(st.stationId)?.name ?? ''}${st.noLoad ? 'l' : ''}${st.noUnload ? 'u' : ''}${st.fullLoad ? 'f' : ''}`).join(',') + `|${line.color}|${insertAt}`;
       if (sk !== stopsKey) {
         stopsKey = sk;
         clear(route);
@@ -216,6 +296,8 @@ export function registerLinePanels(host: PanelHost): void {
           const up = h('button', { className: 'btn icon small ghost', type: 'button', title: 'Move up', disabled: i === 0, onClick: () => report(game, game.cmd.moveStop(id, i, i - 1)) }, uiIcon('up', 14));
           const down = h('button', { className: 'btn icon small ghost', type: 'button', title: 'Move down', disabled: i === line.stops.length - 1, onClick: () => report(game, game.cmd.moveStop(id, i, i + 1)) }, uiIcon('down', 14));
           const remove = h('button', { className: 'btn icon small ghost', type: 'button', title: 'Remove stop', onClick: () => report(game, game.cmd.removeStop(id, i)) }, uiIcon('close', 14));
+          const insert = h('button', { className: 'btn icon small ghost', type: 'button', title: 'Insert stops after this one (click stations on the map)', onClick: () => { game.ui.editingLine = id; game.ui.insertAt = i + 1; game.setTool('line'); } }, uiIcon('plus', 14));
+          insert.setAttribute('aria-label', `Insert stops after stop ${i + 1}`);
           up.setAttribute('aria-label', `Move stop ${i + 1} up`);
           down.setAttribute('aria-label', `Move stop ${i + 1} down`);
           remove.setAttribute('aria-label', `Remove stop ${i + 1}`);
@@ -225,17 +307,25 @@ export function registerLinePanels(host: PanelHost): void {
               { className: 'stop' },
               h('span', { className: 'idx', style: { background: color } }, String(i + 1)),
               h('button', { className: 'name', type: 'button', title: 'Open station', onClick: () => station && openEntity(game, host, 'station', st.stationId) }, station?.name ?? '(missing station)'),
-              h('span', { className: 'ops' }, up, down, remove),
+              h('span', { className: 'ops' }, insert, up, down, remove),
               h('span', { className: 'rules' }, rule('no load', 'noLoad', 'Do not load cargo at this stop'), rule('no unload', 'noUnload', 'Do not unload cargo at this stop'), rule('full load', 'fullLoad', 'Wait here until the train is full')),
             ),
           );
         });
+        if (insertAt >= 0 && insertAt <= line.stops.length) {
+          const marker = h('div', { className: 'insert-marker' }, uiIcon('plus', 12), ` new stops are inserted here (position ${insertAt + 1})`);
+          const after = route.children[insertAt] ?? null;
+          route.insertBefore(marker, after);
+        }
         if (line.stops.length === 0) route.appendChild(emptyState(t('noStops')));
       }
-      const tk = trains.map((x) => `${x.id}:${x.name}:${x.state}:${Math.round(x.profitLastMonth)}:${x.blockedTicks > 30 ? 'b' : ''}`).join(',');
+      const tk = trains.map((x) => `${x.id}:${x.name}:${x.state}:${Math.round(x.profitLastMonth)}:${x.blockedTicks > 30 ? 'b' : ''}:${x.wagons.map((w) => w.spec).join('.')}`).join(',');
       if (tk !== trainsKey) {
         trainsKey = tk;
         trainsMeta.textContent = `${trains.length}`;
+        clear(carriesEl);
+        const classes = [...lineCarries(s, id)];
+        carriesEl.append(h('span', { className: 'hint' }, 'Can carry:'), ...(classes.length ? classes.map((cls) => cargoTag(classCargo(cls))) : [h('span', { className: 'hint' }, trains.length ? 'nothing (trains have no wagons)' : 'nothing yet (no trains)')]));
         clear(trainsEl);
         for (const tr of trains) {
           const st = trainStatus(tr, rt);

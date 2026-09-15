@@ -54,6 +54,15 @@ export class Game {
     this.events.on('month', () => this.maybeAutosave());
     this.events.on('floater', (f) => this.floaters.add(f.tile, this.state.world.width, f.text, f.color));
     window.addEventListener('resize', () => this.renderer.resize());
+    // the tab going away is the moment progress is lost most often: save synchronously
+    const saveOnLeave = () => {
+      if (!this.state || getSetting<number>('autosaveMonths', 3) <= 0) return;
+      saveToSlot(AUTOSAVE_SLOT, this.state, 'Autosave');
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') saveOnLeave();
+    });
+    window.addEventListener('pagehide', saveOnLeave);
   }
 
   newGame(seed: number, startMoney?: number, size: MapSizeKey = 'medium'): void {
@@ -90,6 +99,7 @@ export class Game {
     this.minimap.invalidate();
     this.ui.selection = { kind: 'none', id: -1 };
     this.ui.editingLine = -1;
+    this.ui.insertAt = -1;
     this.ui.trackAnchor = -1;
     this.ui.trackWaypoints = [];
     this.ui.trackPreview = null;
@@ -125,9 +135,13 @@ export class Game {
     this.ui.trackPreview = null;
     this.ui.stationHover = -1;
     this.ui.demolishEdge = null;
+    this.ui.demolishSegment = null;
     this.ui.demolishStation = -1;
     this.ui.upgradeHover = null;
-    if (tool !== 'line') this.ui.editingLine = -1;
+    if (tool !== 'line') {
+      this.ui.editingLine = -1;
+      this.ui.insertAt = -1;
+    }
     this.events.emit('toolChanged', tool);
   }
 

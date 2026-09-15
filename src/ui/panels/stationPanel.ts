@@ -11,7 +11,8 @@ import { dockedTrains } from '../../sim/train/geometry';
 import { t } from '../../i18n/t';
 import { confirmDialog, promptDialog } from '../dialogs';
 import type { PanelHost } from './PanelHost';
-import { lineColor, openEntity, report, trainStatus } from './shared';
+import { carriersAt, lineColor, openEntity, report, trainStatus, wagonNameFor } from './shared';
+import { tickToYear } from '../../core/time';
 
 type Tab = 'overview' | 'cargo' | 'links' | 'traffic';
 
@@ -116,6 +117,8 @@ export function registerStationPanel(host: PanelHost): void {
           const cap = pileCap(st);
           const rows: HTMLElement[] = [];
           const today = tickToDay(s.tick);
+          const carriers = carriersAt(s, rt, id);
+          const year = tickToYear(s.tick, s.startYear);
           for (let c = 0; c < CARGO_COUNT; c++) {
             if (!st.seen[c]) continue;
             const waiting = totalWaiting(st, c);
@@ -127,14 +130,25 @@ export function registerStationPanel(host: PanelHost): void {
             const lastDay = st.lastPickupDay[c];
             const facts: string[] = [];
             facts.push(lastDay >= 0 ? `last pickup ${today - lastDay === 0 ? 'today' : `${today - lastDay} day${today - lastDay === 1 ? '' : 's'} ago`} at ${fmtSpeed(st.lastPickupSpeed[c])}` : 'never picked up');
-            if (amount > 0) facts.push(`waiting ${Math.round(avgAge)} day${Math.round(avgAge) === 1 ? '' : 's'} on average`);
+            if (amount > 0) facts.push(avgAge > 365 ? 'waiting over a year on average' : `waiting ${Math.round(avgAge)} day${Math.round(avgAge) === 1 ? '' : 's'} on average`);
             if (CARGO[c].patienceDays > 0) facts.push(`leaves after ${CARGO[c].patienceDays} days`);
+            const noCarrier = amount > 0 && !carriers.classes.has(CARGO[c].cls);
+            const carrierLine = carriers.lines[0];
+            const carrierRow = noCarrier
+              ? h(
+                  'div',
+                  { className: 'status carrier-row' },
+                  h('div', { className: 'row between' }, badge('warn', carriers.trains ? `No train here can load ${CARGO[c].name}` : 'No train stops here'), carrierLine ? button('Depot', () => host.push('depot', carrierLine.id), 'btn small', `Buy a train for ${carrierLine.name}`) : null),
+                  h('div', { className: 'hint' }, carriers.trains ? `Needs a ${wagonNameFor(CARGO[c].cls, year)} on a line stopping here.` : 'Assign a train to a line with this stop.'),
+                )
+              : null;
             rows.push(
               h(
                 'div',
                 { className: 'cargo-row' },
                 listRow({ icon: cargoIcon(c, 16), title: CARGO[c].name, sub: dests.length ? `to ${dests.slice(0, 3).join(', ')}${dests.length > 3 ? ` +${dests.length - 3}` : ''}` : 'nothing waiting', value: `${fmtInt(waiting)} / ${cap}`, valueClass: waiting >= cap ? 'warn' : '' }),
                 h('div', { className: 'hint cargo-facts' }, facts.join(' · ')),
+                carrierRow,
                 h('div', { className: 'row rating-row' }, h('span', { className: 'hint' }, `${t('rating')} ${fmtPct(r)}`), h('div', { className: 'grow' }, meter(r, ratingTone(r), `Rating ${fmtPct(r)}: pickup frequency, waiting amount and train speed`))),
               ),
             );
@@ -201,7 +215,7 @@ export function registerStationPanel(host: PanelHost): void {
           break;
         }
         case 'cargo':
-          k += st.piles.map((p) => `${p.cargo}:${p.dest}:${p.amount | 0}:${p.ageDays | 0}`).join(',') + '|' + st.rating.map((r) => Math.round(r * 100)).join(',') + '|' + st.platforms + '|' + tickToDay(s.tick) + '|' + st.lastPickupDay.join(',');
+          k += st.piles.map((p) => `${p.cargo}:${p.dest}:${p.amount | 0}:${p.ageDays | 0}`).join(',') + '|' + st.rating.map((r) => Math.round(r * 100)).join(',') + '|' + st.platforms + '|' + tickToDay(s.tick) + '|' + st.lastPickupDay.join(',') + '|' + [...carriersAt(s, rt, id).classes].sort().join(',') + '|' + s.trains.length;
           break;
         case 'links':
           k += s.stations.map((o) => `${o.id}${o.name}${hopDistance(rt, id, o.id)}`).join(',');

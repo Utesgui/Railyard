@@ -28,6 +28,7 @@ const MANAGE: [string, string, string, string][] = [
   ['fleet', 'Fleet', 'V', 'fleet'],
   ['finances', t('toolFinances'), 'F', 'finances'],
   ['contracts', 'Contracts', 'C', 'contracts'],
+  ['world', 'World', 'W', 'town'],
   ['settings', t('toolSettings'), 'O', 'settings'],
 ];
 
@@ -39,6 +40,10 @@ export function createToolbar(game: Game, panels: PanelHost, hooks: ToolbarHooks
   const buildBtns = BUILD.map(([name, label, key, icon]) => toolButton(label, key, icon, () => game.setTool(name)));
   const panelName = (name: string) => (name === 'fleet' && !panels.has('fleet') ? 'depot' : name);
   const manageBtns = MANAGE.map(([name, label, key, icon]) => toolButton(label, key, icon, () => (panels.isOpen(panelName(name)) ? panels.close() : panels.open(panelName(name)))));
+  const offersBadge = h('span', { className: 'badge-count info' });
+  offersBadge.hidden = true;
+  const contractsBtn = manageBtns[MANAGE.findIndex(([n]) => n === 'contracts')];
+  contractsBtn.appendChild(offersBadge);
   const mapBtn = h('button', { className: 'btn map-toggle', type: 'button', title: 'Minimap (M)', attrs: { 'aria-pressed': 'false' }, onClick: () => hooks.toggleMinimap() }, uiIcon('map'), h('span', { className: 'label' }, 'Map'), h('kbd', null, 'M'));
 
   const el = h(
@@ -61,6 +66,11 @@ export function createToolbar(game: Game, panels: PanelHost, hooks: ToolbarHooks
       buildBtns.forEach((b, i) => setPressed(b, game.ui.tool === BUILD[i][0]));
       manageBtns.forEach((b, i) => setPressed(b, panels.isOpen(panelName(MANAGE[i][0]))));
       setPressed(mapBtn, hooks.minimapShown());
+      let offers = 0;
+      for (const c of game.state.contracts) if (c.status === 'offered') offers++;
+      offersBadge.hidden = offers === 0;
+      offersBadge.textContent = String(offers);
+      contractsBtn.title = offers ? `Contracts (C): ${offers} open offer${offers === 1 ? '' : 's'}` : 'Contracts (C)';
     },
   };
 }

@@ -37,28 +37,48 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, cam: Camera, state: G
   }
 
   // line legs (selected line or the line being edited)
+  let routeBudget = 3;
   const lineId = ui.editingLine >= 0 ? ui.editingLine : ui.selection.kind === 'line' ? ui.selection.id : ui.selection.kind === 'train' ? (rt.trainById.get(ui.selection.id)?.lineId ?? -1) : -1;
   if (ui.showLines) {
     for (const line of state.lines) {
       if (line.stops.length < 2) continue;
       const focus = line.id === lineId;
       if (!focus && lineId >= 0) continue;
-      ctx.strokeStyle = LINE_COLORS[line.color % LINE_COLORS.length];
+      const color = LINE_COLORS[line.color % LINE_COLORS.length];
+      const pts = line.stops.map((s) => rt.stationById.get(s.stationId)).filter((s) => !!s);
+      const legs: [number, number][] = [];
+      for (let i = 0; i + 1 < pts.length; i++) legs.push([pts[i]!.tile, pts[i + 1]!.tile]);
+      if (line.mode === 'loop' && pts.length > 2) legs.push([pts[pts.length - 1]!.tile, pts[0]!.tile]);
       ctx.globalAlpha = focus ? 0.9 : 0.35;
       ctx.lineWidth = (focus ? 4 : 2.5) / z;
-      ctx.setLineDash(focus ? [] : [6 / z, 6 / z]);
-      ctx.beginPath();
-      const pts = line.stops.map((s) => rt.stationById.get(s.stationId)).filter((s) => !!s);
-      for (let i = 0; i < pts.length; i++) {
-        const [x, y] = center(pts[i]!.tile, w);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+      ctx.lineJoin = 'round';
+      for (const [a, b] of legs) {
+        // the same route the trains take; computed lazily (a few per frame) and cached until the track changes
+        let route = rt.routeCache.peek(a, b);
+        if (route === undefined && routeBudget > 0) {
+          routeBudget--;
+          route = rt.routeCache.get(state.world, a, b, rt.astar);
+        }
+        ctx.beginPath();
+        if (route) {
+          ctx.strokeStyle = color;
+          ctx.setLineDash([]);
+          route.path.forEach((t, i) => {
+            const [x, y] = center(t, w);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          });
+        } else {
+          // no track between the stops (or not computed yet): straight dashed hint
+          ctx.strokeStyle = route === null ? '#ef5f5b' : color;
+          ctx.setLineDash([6 / z, 6 / z]);
+          const [ax, ay] = center(a, w);
+          const [bx, by] = center(b, w);
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+        }
+        ctx.stroke();
       }
-      if (line.mode === 'loop' && pts.length > 2) {
-        const [x, y] = center(pts[0]!.tile, w);
-        ctx.lineTo(x, y);
-      }
-      ctx.stroke();
       ctx.setLineDash([]);
       if (focus) {
         ctx.fillStyle = '#fff';
@@ -143,6 +163,20 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, cam: Camera, state: G
 
   // demolish highlight
   if (ui.tool === 'demolish') {
+    if (ui.demolishSegment && ui.demolishSegment.count > 1) {
+      ctx.strokeStyle = 'rgba(255,60,60,0.45)';
+      ctx.lineWidth = 9;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (const e of ui.demolishSegment.edges) {
+        const t = e >> 2;
+        const d = e & 3;
+        const [x, y] = center(t, w);
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + DIR_DX[d] * TILE_PX, y + DIR_DY[d] * TILE_PX);
+      }
+      ctx.stroke();
+    }
     if (ui.demolishEdge) {
       const { t, d } = ui.demolishEdge;
       const [x, y] = center(t, w);
@@ -234,7 +268,14 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, cam: Camera, state: G
       const sx = st.tile % w;
       const sy = (st.tile / w) | 0;
       if (sx < vis.x0 - 3 || sx > vis.x1 + 3 || sy < vis.y0 - 3 || sy > vis.y1 + 3) continue;
-      outlined(ctx, st.name, sx * TILE_PX + half, sy * TILE_PX + TILE_PX + 12 / z, '#fff');
+      const name = st.name.length > 26 ? st.name.slice(0, 24).trimEnd() + '…' : st.name;
+      // a town label sits just below this tile: put the station label above instead of over it
+      let above = false;
+      for (const town of state.towns) if (Math.abs(town.x - sx) <= 3 && town.y - sy >= 1 && town.y - sy <= 2) above = true;
+      if (above) {
+        ctx.textBaseline = 'bottom';
+        outlined(ctx, name, sx * TILE_PX + half, sy * TILE_PX - 2, '#fff');
+      } else outlined(ctx, name, sx * TILE_PX + half, sy * TILE_PX + TILE_PX + 12 / z, '#fff');
     }
     if (z >= 1) {
       ctx.font = `${10 / z}px sans-serif`;

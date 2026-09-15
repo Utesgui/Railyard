@@ -130,7 +130,8 @@ export function kpi(label: string, value: Child, opts: { sub?: Child; tone?: 'po
 }
 
 export function kpis(...items: Child[]): HTMLElement {
-  return h('div', { className: 'kpis' }, ...items);
+  const n = items.filter((x) => x !== null && x !== undefined && x !== false).length;
+  return h('div', { className: `kpis n${n}` }, ...items);
 }
 
 export interface ListRowOptions {

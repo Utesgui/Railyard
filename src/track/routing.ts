@@ -70,6 +70,10 @@ export function cumulative(path: number[], w: number): number[] {
 export class RouteCache {
   private map = new Map<number, Route | null>();
   constructor(private tiles: number) {}
+  /** Cached route without computing it; undefined when never asked. */
+  peek(from: number, to: number): Route | null | undefined {
+    return this.map.get(from * this.tiles + to);
+  }
   get(world: World, from: number, to: number, scratch: AStarScratch): Route | null {
     const key = from * this.tiles + to;
     let r = this.map.get(key);

@@ -143,7 +143,7 @@ export function createTools(game: Game, host: ToolHost): Record<ToolName, Tool> 
   };
 
   const demolish: Tool = {
-    onClick(tile) {
+    onClick(tile, ev, wx, wy) {
       if (ui.demolishStation >= 0) {
         const res = game.cmd.removeStation(ui.demolishStation);
         if (!res.ok) host.toast('warn', res.reason ?? 'cannot demolish');
@@ -151,14 +151,18 @@ export function createTools(game: Game, host: ToolHost): Record<ToolName, Tool> 
         return;
       }
       if (ui.demolishEdge) {
-        const res = game.cmd.removeEdge(ui.demolishEdge.t, ui.demolishEdge.d);
+        // default: the whole segment between junctions; Shift: only the hovered piece
+        const single = ev.shiftKey || !ui.demolishSegment || ui.demolishSegment.count <= 1;
+        const res = single ? game.cmd.removeEdge(ui.demolishEdge.t, ui.demolishEdge.d) : game.cmd.removeSegment(ui.demolishEdge.t, ui.demolishEdge.d);
         if (!res.ok) host.toast('warn', res.reason ?? 'cannot demolish');
         ui.demolishEdge = null;
-        this.onMove(tile, 0, 0);
+        ui.demolishSegment = null;
+        this.onMove(tile, wx, wy);
       }
     },
     onMove(tile, wx, wy) {
       ui.demolishEdge = null;
+      ui.demolishSegment = null;
       ui.demolishStation = -1;
       if (tile < 0) return;
       const w = game.state.world.width;
@@ -170,7 +174,12 @@ export function createTools(game: Game, host: ToolHost): Record<ToolName, Tool> 
         return;
       }
       const best = nearestEdge(game, tile, wx, wy);
-      if (best && hasEdge(game.state.world, best.t, best.d)) ui.demolishEdge = best;
+      if (best && hasEdge(game.state.world, best.t, best.d)) {
+        ui.demolishEdge = best;
+        const edges = game.cmd.segmentEdges(best.t, best.d);
+        const { refund, count } = game.cmd.segmentDemolishRefund(edges);
+        ui.demolishSegment = { edges, refund, count };
+      }
     },
     onCancel() {
       game.setTool('inspect');
@@ -209,8 +218,9 @@ export function createTools(game: Game, host: ToolHost): Record<ToolName, Tool> 
       if (tile < 0 || ui.editingLine < 0) return;
       const st = game.rt.stationAt[tile];
       if (st < 0) return host.toast('info', 'Click a station to add it as a stop');
-      const res = game.cmd.addStop(ui.editingLine, st);
+      const res = game.cmd.addStop(ui.editingLine, st, ui.insertAt >= 0 ? ui.insertAt : undefined);
       if (!res.ok) host.toast('warn', res.reason ?? 'cannot add stop');
+      else if (ui.insertAt >= 0) ui.insertAt++;
     },
     onMove() {},
     onCancel() {
