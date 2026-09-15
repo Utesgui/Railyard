@@ -49,11 +49,18 @@ groundwork*; every UI action still goes through the command layer.
 - "Population served" in the year report counted the whole map.
 - Lists that were rebuilt at 10 Hz swallowed clicks; all lists now rebuild only when their content key changes.
 
+## Audit coverage (docs/UI-UX-AUDIT.md)
+
+Every P0 and P1 finding of the audit is addressed: unchanged refits are free and cannot be applied, refits are atomic with a net price, dialogs keep one pause/speed lifecycle and Escape works inside inputs, the HUD stays usable at 390 px, minimap and toolbar no longer overlap at any UI size, "this month" and "last month" are separate everywhere, the year report distinguishes served and map population, Fleet replaces the old Vehicles entry, the depot has readable vehicle cards (the "+" tile jumps to the catalogue), purchase and refit prerequisites are shown before clicking, line rows carry rules on their own line with a keyboard-reachable colour grid, lists render their empty state on first open, finance figures are labelled and broken down, contract penalties and exact dates are visible before accepting and expired offers are not "failed", cache keys include names, colours, destinations and the running month (chart labels move on even when values repeat), the alerts badge is id-based, and destructive actions ask for confirmation while command failures are reported.
+
+From the detail sections: the station tool previews what a station would collect from; station cargo rows show last pickup, pickup speed, average waiting age and patience; towns list every accepted cargo; industries diagnose "no station", "not on a line", "no destination" (using the simulation's own lookup) and "no inputs"; lines can be searched and sorted; charts are taller, have exact tooltips and a collapsible data table; the bankruptcy dialog lists the saves that actually exist.
+
 ## Known limits
 
 - Stops cannot be reordered by drag; use the up/down buttons.
 - Wagons in the consist editor are removed by clicking them; there is no in-place reordering (order has no gameplay effect).
-- Charts are SVG without tooltips on touch devices.
+- Lines on the map are drawn as straight connections between stops, not as the routed track (stated in the Lines panel).
+- Contract rewards are booked as revenue of the delivered cargo; a separate premium series would need a booking change and a schema migration.
 - Table columns in Finances scroll horizontally on narrow panels by design.
 - The HUD size uses CSS `zoom`; very old browsers without `zoom` support keep 100 %.
 

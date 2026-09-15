@@ -433,4 +433,12 @@ label.row { gap: var(--sp-2); }
 .section > h3:empty { display: none; }
 input[type='search'] { width: 100%; }
 #panel.wide .kv-grid { grid-template-columns: 1fr 1fr 1fr; }
+details.chart-table { margin-top: 2px; }
+details.chart-table > summary { font-size: var(--fs-xs); color: var(--text-3); cursor: pointer; list-style: none; }
+details.chart-table > summary::before { content: '▸ '; }
+details.chart-table[open] > summary::before { content: '▾ '; }
+details.chart-table .tbl-wrap { max-height: 200px; margin-top: 4px; }
+.cargo-row .cargo-facts { padding: 0 8px; }
+button.vehicle.add { font: inherit; font-size: var(--fs-lg); cursor: pointer; }
+button.vehicle.add:hover { color: var(--text); border-color: var(--primary); }
 .consist .vehicle.loco .name { font-size: var(--fs-sm); }

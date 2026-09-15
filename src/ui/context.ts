@@ -5,6 +5,30 @@ import { fmtMoney } from './format';
 import { uiIcon } from './icons';
 import { dismissTutorial, tutorialText } from './tutorial';
 
+/** Names of towns and industries a station on `tile` would collect from. */
+function coverageNames(game: Game, tile: number): string[] {
+  const s = game.state;
+  const rt = game.rt;
+  const w = s.world.width;
+  const hgt = s.world.height;
+  const r = B.catchmentRadius;
+  const x0 = tile % w;
+  const y0 = (tile / w) | 0;
+  const towns = new Set<number>();
+  const inds = new Set<number>();
+  for (let y = Math.max(0, y0 - r); y <= Math.min(hgt - 1, y0 + r); y++) {
+    for (let x = Math.max(0, x0 - r); x <= Math.min(w - 1, x0 + r); x++) {
+      const t = y * w + x;
+      if (rt.townAt[t] >= 0) towns.add(rt.townAt[t]);
+      if (rt.industryAt[t] >= 0) inds.add(rt.industryAt[t]);
+    }
+  }
+  const names: string[] = [];
+  for (const id of towns) names.push(rt.townById.get(id)?.name ?? '?');
+  for (const id of inds) names.push(rt.industryById.get(id)?.name ?? '?');
+  return names;
+}
+
 export interface ContextBar {
   el: HTMLElement;
   update(): void;
@@ -78,7 +102,9 @@ export function createContextBar(game: Game, el: HTMLElement): ContextBar {
         if (ui.stationHover < 0) return set(TOOL_LABEL.station, 'Click a free tile within 3 tiles of a town or industry.', fmtMoney(B.stationCost), '', 'Esc cancels', false);
         const afford = B.stationCost <= money;
         if (!ui.stationHoverOk) return set(TOOL_LABEL.station, 'Not here: needs a free tile within 3 tiles of a town or industry.', 'blocked', 'bad', 'Esc cancels', false);
-        return set(TOOL_LABEL.station, 'Click to build the station (2 platforms).', `${fmtMoney(B.stationCost)}${afford ? '' : ' (not enough money)'}`, afford ? 'ok' : 'bad', 'Esc cancels', false);
+        const names = coverageNames(game, ui.stationHover);
+        const covers = names.length ? `Collects from ${names.slice(0, 3).join(', ')}${names.length > 3 ? ` +${names.length - 3}` : ''}.` : 'Nothing in range.';
+        return set(TOOL_LABEL.station, `${covers} Click to build (2 platforms).`, `${fmtMoney(B.stationCost)}${afford ? '' : ' (not enough money)'}`, afford ? 'ok' : 'bad', 'Esc cancels', false);
       }
       case 'demolish': {
         if (ui.demolishStation >= 0) {

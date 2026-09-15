@@ -48,7 +48,7 @@ export function registerContractsPanel(host: PanelHost): void {
       if (c.status === 'offered') {
         fact('Penalty if failed', fmtMoney(c.penalty), 'warn');
         fact('Time to deliver', `${c.deliveryMonths} months after accepting`);
-        fact('Offer expires', monthsLeft(c) <= 0 ? 'this month' : `in ${monthsLeft(c)} month${monthsLeft(c) === 1 ? '' : 's'}`);
+        fact('Offer expires', `${formatDate(dayToDate(c.deadlineDay, s.startYear))}${monthsLeft(c) <= 1 ? '' : ` (${monthsLeft(c)} mo)`}`, monthsLeft(c) <= 1 ? 'warn' : '');
       } else if (c.status === 'active') {
         fact('Penalty if failed', fmtMoney(c.penalty), 'warn');
         fact('Deadline', `${formatDate(dayToDate(c.deadlineDay, s.startYear))} (${monthsLeft(c)} mo left)`, monthsLeft(c) <= 1 ? 'warn' : '');

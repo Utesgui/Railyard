@@ -9,7 +9,7 @@ import { trainHeadWorld, type VehiclePose } from '../../sim/train/geometry';
 import { badge, button, clear, emptyState, h, kpi, kpis, kv, kvGrid, listRow, meter, row, section, sectionMeta, type Tone } from '../dom';
 import { fmtInt, fmtMoney, fmtMoneyShort, fmtPct, fmtSpeed } from '../format';
 import { barChart } from '../chart';
-import { monthLabels } from './stats';
+import { monthKey, monthLabels } from './stats';
 import { trainAgeYears } from '../../sim/train/step';
 import { consistPerformance, type PerfInfo } from '../../sim/train/performance';
 import { t } from '../../i18n/t';
@@ -151,7 +151,7 @@ export function registerTrainPanels(host: PanelHost): void {
           kvGrid(
             kv(`${t('profit')} (${t('thisMonth').toLowerCase()})`, fmtMoney(train.profitMonth), train.profitMonth >= 0 ? '' : 'warn'),
             kv(`${t('profit')} (${t('lastMonth').toLowerCase()})`, fmtMoney(train.profitLastMonth), train.profitLastMonth >= 0 ? '' : 'warn'),
-            kv('Load factor', train.loadCount > 0 ? fmtPct(train.loadSum / train.loadCount) : train.loadFactorLastMonth > 0 ? fmtPct(train.loadFactorLastMonth) : '–'),
+            kv('Load factor (sampled at departures)', train.loadCount > 0 ? fmtPct(train.loadSum / train.loadCount) : train.loadFactorLastMonth > 0 ? fmtPct(train.loadFactorLastMonth) : '–'),
             kv('Running cost', `${fmtMoney(info.runCost)}/mo`),
             kv('Age', `${yearsText(trainAgeYears(s, train))} (bought ${bought.year})`),
             kv('Delivered (lifetime)', `${fmtInt(train.deliveredTotal)} units`),
@@ -160,11 +160,11 @@ export function registerTrainPanels(host: PanelHost): void {
           ),
         );
       }
-      const hk = train.profitHistory.join(',');
+      const hk = `${monthKey(s)}|${train.profitHistory.join(',')}`;
       if (chartWrap.dataset.key !== hk) {
         chartWrap.dataset.key = hk;
         clear(chartWrap);
-        chartWrap.appendChild(barChart([...train.profitHistory].reverse(), { format: fmtMoneyShort, labels: monthLabels(s, train.profitHistory.length), emptyText: 'The first month is still running' }));
+        chartWrap.appendChild(barChart([...train.profitHistory].reverse(), { format: fmtMoneyShort, tooltipFormat: fmtMoney, height: 84, table: true, labels: monthLabels(s, train.profitHistory.length), emptyText: 'The first month is still running' }));
       }
       const stopped = train.state === TrainState.Stopped;
       stopBtn.textContent = stopped ? t('stStopped') : train.stopAtNext ? 'Cancel stop' : t('stopAtNext');
@@ -330,23 +330,30 @@ export function registerTrainPanels(host: PanelHost): void {
         box.setAttribute('aria-label', `Remove ${w.name}`);
         consist.appendChild(box);
       });
-      if (draft.wagons.length < B.maxWagons) consist.appendChild(h('span', { className: 'vehicle add', title: 'Add wagons from the catalogue below' }, '+'));
+      if (draft.wagons.length < B.maxWagons) {
+        const add = h('button', { className: 'vehicle add', type: 'button', title: 'Add wagons from the catalogue below', onClick: () => { catalog.scrollIntoView({ behavior: 'smooth', block: 'start' }); catalog.querySelector<HTMLElement>('button')?.focus({ preventScroll: true }); } }, '+');
+        add.setAttribute('aria-label', 'Go to the wagon catalogue');
+        consist.appendChild(add);
+      }
       consistHint.textContent = draft.wagons.length ? `${draft.wagons.length} of ${B.maxWagons} wagons · click a wagon to remove it` : 'Add wagons from the catalogue below. A train without wagons carries nothing.';
       // summary
       let price = loco?.price ?? 0;
       let run = loco?.runCost ?? 0;
       let cap = 0;
       let limit = loco?.maxSpeed ?? 0;
+      const byClass = new Map<CargoClass, number>();
       for (const wid of draft.wagons) {
         const w = WAGONS[wid];
         price += w.price;
         run += w.runCost;
         cap += w.capacity;
+        byClass.set(w.cls, (byClass.get(w.cls) ?? 0) + w.capacity);
         const l = wagonSpeedLimit(w.era);
         if (l > 0 && l < limit) limit = l;
       }
       clear(summary);
-      summary.appendChild(kvGrid(kv(t('running'), `${fmtMoney(run)}/mo`), kv(t('capacity'), `${cap} units`), kv(t('maxSpeed'), fmtSpeed(limit)), kv('Purchase value', fmtMoney(price))));
+      const capText = cap ? [...byClass].map(([cls, n]) => `${n} ${CLASS_LABEL[cls].toLowerCase()}`).join(' · ') : 'nothing';
+      summary.appendChild(kvGrid(kv(t('running'), `${fmtMoney(run)}/mo`), kv(t('capacity'), capText), kv(t('maxSpeed'), fmtSpeed(limit)), kv('Purchase value', fmtMoney(price))));
       clear(perfWrap);
       if (loco) {
         const perf = consistPerformance(draft.loco, draft.wagons);
@@ -424,14 +431,15 @@ export function registerTrainPanels(host: PanelHost): void {
       ),
       host.foot(h('div', { className: 'grow' }, priceEl, warnEl), actionBtn),
     );
-    let moneyKey = -1;
+    let footKey = '';
     return {
       el,
       update() {
-        // affordability changes with the balance
-        const m = Math.round(game.state.economy.money);
-        if (m !== moneyKey) {
-          moneyKey = m;
+        // affordability and the chosen line's readiness can change while the panel is open
+        const line = game.rt.lineById.get(draft.lineId);
+        const k = `${Math.round(game.state.economy.money)}|${line ? line.stops.length : -1}|${game.state.lines.length}`;
+        if (k !== footKey) {
+          footKey = k;
           renderFooter();
         }
         if (refit && game.rt.trainById.get(refitId) !== refitTrain) host.close();

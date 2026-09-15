@@ -1,10 +1,11 @@
 import type { Game } from '../../app/Game';
 import { B } from '../../data/balance';
+import { tickToDay } from '../../core/time';
 import { CARGO, CARGO_COUNT } from '../../data/cargo';
 import { hopDistance, nextHop } from '../../sim/cargoRouting';
 import { pileCap, totalWaiting, totalWaitingAll } from '../../sim/station';
 import { badge, button, clear, emptyState, h, kpi, kpis, listRow, meter, section, sectionMeta, tabs } from '../dom';
-import { fmtInt, fmtMoney, fmtPct } from '../format';
+import { fmtInt, fmtMoney, fmtPct, fmtSpeed } from '../format';
 import { cargoIcon, cargoTag, uiIcon } from '../icons';
 import { dockedTrains } from '../../sim/train/geometry';
 import { t } from '../../i18n/t';
@@ -114,16 +115,26 @@ export function registerStationPanel(host: PanelHost): void {
         case 'cargo': {
           const cap = pileCap(st);
           const rows: HTMLElement[] = [];
+          const today = tickToDay(s.tick);
           for (let c = 0; c < CARGO_COUNT; c++) {
             if (!st.seen[c]) continue;
             const waiting = totalWaiting(st, c);
-            const dests = [...new Set(st.piles.filter((p) => p.cargo === c).map((p) => rt.stationById.get(p.dest)?.name ?? '?'))];
+            const piles = st.piles.filter((p) => p.cargo === c);
+            const dests = [...new Set(piles.map((p) => rt.stationById.get(p.dest)?.name ?? '?'))];
             const r = st.rating[c];
+            const amount = piles.reduce((a, p) => a + p.amount, 0);
+            const avgAge = amount > 0 ? piles.reduce((a, p) => a + p.amount * p.ageDays, 0) / amount : 0;
+            const lastDay = st.lastPickupDay[c];
+            const facts: string[] = [];
+            facts.push(lastDay >= 0 ? `last pickup ${today - lastDay === 0 ? 'today' : `${today - lastDay} day${today - lastDay === 1 ? '' : 's'} ago`} at ${fmtSpeed(st.lastPickupSpeed[c])}` : 'never picked up');
+            if (amount > 0) facts.push(`waiting ${Math.round(avgAge)} day${Math.round(avgAge) === 1 ? '' : 's'} on average`);
+            if (CARGO[c].patienceDays > 0) facts.push(`leaves after ${CARGO[c].patienceDays} days`);
             rows.push(
               h(
                 'div',
                 { className: 'cargo-row' },
                 listRow({ icon: cargoIcon(c, 16), title: CARGO[c].name, sub: dests.length ? `to ${dests.slice(0, 3).join(', ')}${dests.length > 3 ? ` +${dests.length - 3}` : ''}` : 'nothing waiting', value: `${fmtInt(waiting)} / ${cap}`, valueClass: waiting >= cap ? 'warn' : '' }),
+                h('div', { className: 'hint cargo-facts' }, facts.join(' · ')),
                 h('div', { className: 'row rating-row' }, h('span', { className: 'hint' }, `${t('rating')} ${fmtPct(r)}`), h('div', { className: 'grow' }, meter(r, ratingTone(r), `Rating ${fmtPct(r)}: pickup frequency, waiting amount and train speed`))),
               ),
             );
@@ -190,7 +201,7 @@ export function registerStationPanel(host: PanelHost): void {
           break;
         }
         case 'cargo':
-          k += st.piles.map((p) => `${p.cargo}:${p.dest}:${p.amount | 0}`).join(',') + '|' + st.rating.map((r) => Math.round(r * 100)).join(',') + '|' + st.platforms;
+          k += st.piles.map((p) => `${p.cargo}:${p.dest}:${p.amount | 0}:${p.ageDays | 0}`).join(',') + '|' + st.rating.map((r) => Math.round(r * 100)).join(',') + '|' + st.platforms + '|' + tickToDay(s.tick) + '|' + st.lastPickupDay.join(',');
           break;
         case 'links':
           k += s.stations.map((o) => `${o.id}${o.name}${hopDistance(rt, id, o.id)}`).join(',');

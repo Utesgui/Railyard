@@ -7,6 +7,8 @@ import { servedPopulation } from '../sim/cargoRouting';
 import { ledgerTotalCosts, ledgerTotalRevenue } from '../sim/economy';
 import { button, h, kpi, kpis, kv, kvGrid, listRow, section } from './dom';
 import { fmtInt, fmtMoney } from './format';
+import { uiIcon } from './icons';
+import { AUTOSAVE_SLOT, QUICK_SLOT, SLOTS, loadFromSlot, slotInfo } from '../save/storage';
 
 type Child = Node | string | number | null | undefined | false;
 
@@ -293,15 +295,29 @@ export function showYearSummary(game: Game): void {
 }
 
 export function showGameOver(game: Game, openSettings: () => void): void {
+  const saves: { slot: string; label: string }[] = [];
+  const add = (slot: string, label: string) => {
+    const info = slotInfo(slot);
+    if (info) saves.push({ slot, label: `${label} · ${info.name} · ${new Date(info.savedAt).toLocaleString()}` });
+  };
+  add(AUTOSAVE_SLOT, 'Autosave');
+  add(QUICK_SLOT, 'Quick save');
+  for (const s of SLOTS) add(s, `Slot ${s}`);
+  const load = (slot: string) => {
+    const st = loadFromSlot(slot);
+    if (st) game.loadState(st);
+  };
   showDialog({
     title: 'Bankrupt',
     role: 'alertdialog',
     dismissable: false,
-    body: [h('p', null, 'The company could not cover its debts for six months and has been liquidated.'), h('p', { className: 'muted' }, 'Load a save or start a new game from the settings.')],
-    actions: [
-      { label: 'Quick load', onClick: () => game.quickLoad() },
-      { label: 'Settings', kind: 'primary', onClick: openSettings },
+    body: [
+      h('p', null, 'The company could not cover its debts for six months and has been liquidated.'),
+      saves.length
+        ? section('Load a saved game', h('div', { className: 'list' }, ...saves.map((sv) => listRow({ icon: uiIcon('save', 16), title: sv.label, onClick: () => load(sv.slot) }))))
+        : h('p', { className: 'muted' }, 'No saved games were found in this browser.'),
     ],
+    actions: [{ label: 'New game', kind: 'primary', onClick: openSettings }],
   });
 }
 

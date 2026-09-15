@@ -10,7 +10,7 @@ import { SLOTS, deleteSlot, exportToFile, getSetting, importFromFile, loadFromSl
 import { badge, button, clear, emptyState, h, kpi, kpis, listRow, row, section, sectionMeta, tabs } from '../dom';
 import { fmtInt, fmtMoney, fmtMoneyShort } from '../format';
 import { barChart, lineChart } from '../chart';
-import { monthLabels } from './stats';
+import { monthKey, monthLabels } from './stats';
 import { t } from '../../i18n/t';
 import { confirmDialog, showAchievements, showHelp } from '../dialogs';
 import { ACHIEVEMENTS } from '../../sim/achievements';
@@ -98,14 +98,14 @@ export function registerSystemPanels(host: PanelHost): void {
       loanHint.textContent = `${Math.round(B.loanRateYearly * 100)}% interest per year, charged monthly (${fmtMoney(Math.round((e.loan * B.loanRateYearly) / 12))}/mo now)`;
       const n = mem.months;
       const cash = e.cashHistory.slice(0, n);
-      if (changed('cash', cash.join(','))) {
+      if (changed('cash', `${monthKey(s)}|${cash.join(',')}`)) {
         clear(cashWrap);
-        cashWrap.appendChild(lineChart([...cash].reverse(), { format: fmtMoneyShort, labels: monthLabels(s, cash.length), emptyText: 'Cash history builds up month by month' }));
+        cashWrap.appendChild(lineChart([...cash].reverse(), { format: fmtMoneyShort, tooltipFormat: fmtMoney, height: 96, table: true, labels: monthLabels(s, cash.length), emptyText: 'Cash history builds up month by month' }));
       }
       const hist = e.ledger.slice(1, 1 + n).map(ledgerNet);
-      if (changed('net', hist.join(','))) {
+      if (changed('net', `${monthKey(s)}|${hist.join(',')}`)) {
         clear(netWrap);
-        netWrap.appendChild(barChart([...hist].reverse(), { format: fmtMoneyShort, labels: monthLabels(s, hist.length), emptyText: 'The first month is still running' }));
+        netWrap.appendChild(barChart([...hist].reverse(), { format: fmtMoneyShort, tooltipFormat: fmtMoney, height: 96, table: true, slots: n, labels: monthLabels(s, hist.length), emptyText: 'The first month is still running' }));
       }
       const rows = e.ledger.slice(0, n + 1);
       const tk = rows.map((l) => `${l.year}${l.month}${Math.round(ledgerTotalRevenue(l))}${Math.round(ledgerTotalCosts(l))}`).join('|');
@@ -134,7 +134,7 @@ export function registerSystemPanels(host: PanelHost): void {
         tableWrap.appendChild(h('table', { className: 'tbl' }, h('thead', null, head), body));
       }
       const led = mem.cargoTab === 'this' ? e.ledger[0] : e.ledger[1];
-      const ck = `${mem.cargoTab}|${led ? led.revenue.map((v) => v | 0).join(',') : ''}`;
+      const ck = `${mem.cargoTab}|${monthKey(s)}|${led ? led.revenue.map((v) => v | 0).join(',') : ''}`;
       if (changed('cargo', ck)) {
         clear(cargoRev);
         const entries = led ? led.revenue.map((v, c) => ({ v, c })).filter((x) => x.v > 0).sort((a, b) => b.v - a.v) : [];

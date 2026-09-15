@@ -8,7 +8,7 @@ import { confirmDialog, promptDialog } from '../dialogs';
 import { barChart } from '../chart';
 import { cargoIcon, uiIcon } from '../icons';
 import { CARGO, CARGO_COUNT } from '../../data/cargo';
-import { monthLabels } from './stats';
+import { monthKey, monthLabels } from './stats';
 import type { PanelHost } from './PanelHost';
 import { lineColor, openEntity, report, trainStatus } from './shared';
 
@@ -26,8 +26,16 @@ function lineHealth(game: Game, line: Line): { tone: Tone; text: string } {
 
 export function registerLinePanels(host: PanelHost): void {
   host.register('lines', (game: Game, host) => {
+    const mem = host.state<{ q: string; sort: 'status' | 'name' | 'profit' }>('lines', () => ({ q: '', sort: 'status' }));
     const kpiWrap = h('div');
     const list = h('div', { className: 'list' });
+    const search = h('input', { type: 'search', placeholder: 'Search lines', value: mem.q, attrs: { 'aria-label': 'Search lines' }, onInput: () => { mem.q = search.value; update(); } });
+    const sortSel = h('select', { attrs: { 'aria-label': 'Sort by' }, onChange: () => { mem.sort = sortSel.value as 'status' | 'name' | 'profit'; update(); } });
+    for (const [k, label] of [['status', 'Status'], ['name', 'Name'], ['profit', 'Profit (last month)']] as const) {
+      const opt = h('option', { value: k }, label);
+      if (k === mem.sort) opt.selected = true;
+      sortSel.appendChild(opt);
+    }
     const newLine = () => {
       const r = game.cmd.createLine();
       if (!report(game, r)) return;
@@ -37,7 +45,7 @@ export function registerLinePanels(host: PanelHost): void {
     };
     const el = host.frame(
       host.header(t('toolLines'), { eyebrow: 'Company' }),
-      host.body(kpiWrap, list, h('div', { className: 'hint' }, 'A line is an ordered list of stations. Trains run it back and forth (ping-pong) or in a loop.')),
+      host.body(kpiWrap, h('div', { className: 'row' }, h('div', { className: 'grow' }, search), sortSel), list, h('div', { className: 'hint' }, 'A line is an ordered list of stations. Trains run it back and forth (ping-pong) or in a loop. On the map, lines are drawn as straight connections between stops, not as the track the trains actually take.')),
       host.foot(h('span', { className: 'grow hint' }, 'Click a line to edit it'), button([uiIcon('plus', 14), t('newLine')], newLine, 'btn primary')),
     );
     let key = '';
@@ -52,11 +60,16 @@ export function registerLinePanels(host: PanelHost): void {
         clear(kpiWrap);
         kpiWrap.appendChild(kpis(kpi('Lines', fmtInt(s.lines.length)), kpi('Trains', fmtInt(s.trains.length)), kpi('Profit', fmtMoneyShort(profit), { tone: profit >= 0 ? 'pos' : 'neg', sub: 'last month, all lines' })));
       }
-      const k = s.lines.map((l) => `${l.id}:${l.name}:${l.color}:${l.mode}:${l.stops.length}:${Math.round(l.revenueLastMonth - l.costLastMonth)}:${s.trains.filter((x) => x.lineId === l.id).length}:${lineHealth(game, l).text}`).join('|');
+      const k = `${mem.q}|${mem.sort}|` + s.lines.map((l) => `${l.id}:${l.name}:${l.color}:${l.mode}:${l.stops.length}:${Math.round(l.revenueLastMonth - l.costLastMonth)}:${s.trains.filter((x) => x.lineId === l.id).length}:${lineHealth(game, l).text}`).join('|');
       if (k === key) return;
       key = k;
       clear(list);
-      for (const l of s.lines) {
+      const q = mem.q.trim().toLowerCase();
+      const shown = s.lines.filter((l) => !q || l.name.toLowerCase().includes(q));
+      const net = (l: Line) => l.revenueLastMonth - l.costLastMonth;
+      const rank = (l: Line) => (lineHealth(game, l).tone === 'ok' ? 1 : 0);
+      shown.sort((a, b) => (mem.sort === 'name' ? a.name.localeCompare(b.name) : mem.sort === 'profit' ? net(b) - net(a) : rank(a) - rank(b) || a.name.localeCompare(b.name)));
+      for (const l of shown) {
         const trains = s.trains.filter((x) => x.lineId === l.id).length;
         const net = l.revenueLastMonth - l.costLastMonth;
         const health = lineHealth(game, l);
@@ -73,6 +86,7 @@ export function registerLinePanels(host: PanelHost): void {
         );
       }
       if (!s.lines.length) list.appendChild(emptyState(h('span', null, h('strong', null, 'No lines yet.'), ' Create one, then click two or more stations on the map to add them as stops.'), button(t('newLine'), newLine, 'btn small primary')));
+      else if (!shown.length) list.appendChild(emptyState('No line matches the search.'));
     };
     update();
     return { el, update };
@@ -239,13 +253,13 @@ export function registerLinePanels(host: PanelHost): void {
         }
         if (!trains.length) trainsEl.appendChild(emptyState(line.stops.length >= 2 ? 'No trains yet. Buy one for this line.' : 'Add two stops, then buy a train.', line.stops.length >= 2 ? button(t('buyTrain'), () => host.push('depot', id), 'btn small primary') : null));
       }
-      const hk2 = line.profitHistory.join(',');
+      const hk2 = `${monthKey(s)}|${line.profitHistory.join(',')}`;
       if (chartWrap.dataset.key !== hk2) {
         chartWrap.dataset.key = hk2;
         clear(chartWrap);
-        chartWrap.appendChild(barChart([...line.profitHistory].reverse(), { format: fmtMoneyShort, labels: monthLabels(s, line.profitHistory.length), emptyText: 'The first month is still running' }));
+        chartWrap.appendChild(barChart([...line.profitHistory].reverse(), { format: fmtMoneyShort, tooltipFormat: fmtMoney, height: 84, table: true, labels: monthLabels(s, line.profitHistory.length), emptyText: 'The first month is still running' }));
       }
-      const ck = line.cargoLastMonth.join(',');
+      const ck = `${monthKey(s)}|${line.cargoLastMonth.join(',')}`;
       if (cargoList.dataset.key !== ck) {
         cargoList.dataset.key = ck;
         clear(cargoList);

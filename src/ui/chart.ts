@@ -12,6 +12,15 @@ export interface BarChartOptions {
   emptyText?: string;
   /** minimum number of slots (bars are padded on the left so widths stay stable) */
   slots?: number;
+  /** exact formatter for tooltips and the data table (defaults to `format`) */
+  tooltipFormat?: (v: number) => string;
+  /** append a collapsible data table (accessible alternative to the drawing) */
+  table?: boolean;
+}
+
+function dataTable(values: number[], labels: string[] | undefined, format: (v: number) => string): HTMLElement {
+  const rows = values.map((v, i) => h('tr', null, h('td', null, labels?.[i] ?? String(i + 1)), h('td', { className: v < 0 ? 'neg' : '' }, format(v))));
+  return h('details', { className: 'chart-table' }, h('summary', null, 'Show as table'), h('div', { className: 'tbl-wrap' }, h('table', { className: 'tbl' }, h('thead', null, h('tr', null, h('th', null, 'Month'), h('th', null, 'Value'))), h('tbody', null, ...rows))));
 }
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -59,7 +68,7 @@ export function barChart(values: number[], opts: BarChartOptions): HTMLElement {
     const y = v >= 0 ? y0 - hgt : y0;
     const bar = el('rect', { x, y, width: barW, height: hgt, rx: 2, fill: v >= 0 ? (opts.positive ?? '#4fb0ff') : (opts.negative ?? '#e0483f') });
     const title = document.createElementNS(NS, 'title');
-    title.textContent = `${opts.labels?.[idx] ?? ''} ${opts.format(v)}`.trim();
+    title.textContent = `${opts.labels?.[idx] ?? ''} ${(opts.tooltipFormat ?? opts.format)(v)}`.trim();
     bar.appendChild(title);
     svg.appendChild(bar);
   });
@@ -74,6 +83,7 @@ export function barChart(values: number[], opts: BarChartOptions): HTMLElement {
     label(opts.labels[0], padL, H - 2, 'start');
   }
   wrap.appendChild(svg);
+  if (opts.table) wrap.appendChild(dataTable(values, opts.labels, opts.tooltipFormat ?? opts.format));
   return wrap;
 }
 
@@ -83,6 +93,8 @@ export interface LineChartOptions {
   height?: number;
   color?: string;
   emptyText?: string;
+  tooltipFormat?: (v: number) => string;
+  table?: boolean;
 }
 
 /** Single-series line chart with a faint area fill, min/max labels and an emphasised last point. */
@@ -115,7 +127,7 @@ export function lineChart(values: number[], opts: LineChartOptions): HTMLElement
   values.forEach((v, i) => {
     const c = el('circle', { cx: px(i), cy: py(v), r: i === values.length - 1 ? 3.5 : 6, fill: i === values.length - 1 ? color : 'transparent' });
     const title = document.createElementNS(NS, 'title');
-    title.textContent = `${opts.labels?.[i] ?? ''} ${opts.format(v)}`.trim();
+    title.textContent = `${opts.labels?.[i] ?? ''} ${(opts.tooltipFormat ?? opts.format)(v)}`.trim();
     c.appendChild(title);
     svg.appendChild(c);
   });
@@ -128,5 +140,6 @@ export function lineChart(values: number[], opts: LineChartOptions): HTMLElement
   label(opts.format(min), W - padR, H - 2, 'end');
   if (opts.labels) label(opts.labels[0], padL, H - 2, 'start');
   wrap.appendChild(svg);
+  if (opts.table) wrap.appendChild(dataTable(values, opts.labels, opts.tooltipFormat ?? opts.format));
   return wrap;
 }

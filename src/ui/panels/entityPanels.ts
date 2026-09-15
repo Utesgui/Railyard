@@ -2,6 +2,7 @@ import type { Game } from '../../app/Game';
 import { CARGO, Cargo, TOWN_ACCEPTS } from '../../data/cargo';
 import { INDUSTRIES, isRawIndustry } from '../../data/industries';
 import { monthlyProduction } from '../../sim/industry';
+import { chooseFreightDest } from '../../sim/cargoRouting';
 import { badge, button, clear, emptyState, h, kpi, kpis, kv, kvGrid, listRow, meter, section, sectionMeta } from '../dom';
 import { fmtInt, fmtPct } from '../format';
 import { t } from '../../i18n/t';
@@ -43,12 +44,17 @@ export function registerEntityPanels(host: PanelHost): void {
       const list = s.stations.filter((x) => rt.catchment.get(x.id)?.industries.includes(id));
       const served = list.some((x) => rt.served.has(x.id));
       const share = ind.producedLastMonth > 0 ? Math.min(1, ind.transportedLastMonth / ind.producedLastMonth) : -1;
-      const sk = `${served}|${list.length}|${share.toFixed(2)}|${ind.monthsUnserved}`;
+      // outputs that no station on the line network accepts (same lookup the simulation uses)
+      const noDest = served ? type.outputs.filter((c) => !list.some((x) => rt.served.has(x.id) && chooseFreightDest(s, rt, x.id, c) >= 0)) : [];
+      const starving = !raw && served && ind.producedLastMonth === 0 && ind.producedMonth === 0 && ind.inputStock.every((v) => v < 1);
+      const sk = `${served}|${list.length}|${share.toFixed(2)}|${ind.monthsUnserved}|${noDest.join(',')}|${starving}`;
       if (sk !== statusKey) {
         statusKey = sk;
         clear(statusWrap);
         if (!list.length) statusWrap.append(badge('warn', 'No station in range'), h('span', { className: 'hint' }, 'Place a station within 3 tiles to collect the output.'));
         else if (!served) statusWrap.append(badge('warn', 'Station not on a line'), h('span', { className: 'hint' }, 'Add the station to a line with a destination for the cargo.'));
+        else if (noDest.length) statusWrap.append(badge('warn', `No destination for ${noDest.map((c) => CARGO[c].name).join(', ')}`), h('span', { className: 'hint' }, 'No station reachable on the line network accepts it, so nothing is produced for transport.'));
+        else if (starving) statusWrap.append(badge('warn', 'No inputs delivered'), h('span', { className: 'hint' }, `Deliver ${type.inputs.map((c) => CARGO[c].name).join(' or ')} by train to start production.`));
         else if (share >= 0 && share < 0.6 && raw) statusWrap.append(badge('warn', `${fmtPct(share)} moved last month`), h('span', { className: 'hint' }, 'Below 60%: production will not grow.'));
         else statusWrap.append(badge('ok', 'Served'), h('span', { className: 'hint' }, share >= 0 ? `${fmtPct(share)} of last month's output was moved.` : 'Waiting for the first full month.'));
       }
@@ -133,11 +139,10 @@ export function registerEntityPanels(host: PanelHost): void {
         for (const c of TOWN_ACCEPTS) {
           const cur = town.deliveredMonth[c];
           const last = town.deliveredLastMonth[c];
-          if (cur + last <= 0) continue;
-          rows.push(listRow({ icon: cargoIcon(c, 16), title: CARGO[c].name, value: `${fmtInt(cur)} · ${fmtInt(last)}` }));
+          const none = cur + last <= 0;
+          rows.push(listRow({ icon: cargoIcon(c, 16), title: CARGO[c].name, sub: none ? 'accepted, nothing delivered yet' : undefined, value: `${fmtInt(cur)} · ${fmtInt(last)}`, valueClass: none ? 'muted' : '' }));
         }
         delivered.append(...rows);
-        if (!rows.length) delivered.appendChild(h('div', { className: 'hint' }, 'Nothing delivered yet. Passengers, mail, planks, goods, food and fuel are accepted.'));
       }
       const list = game.state.stations.filter((x) => rt.catchment.get(x.id)?.towns.includes(id));
       const k = list.map((x) => `${x.id}${x.name}${rt.served.has(x.id)}`).join(',');
