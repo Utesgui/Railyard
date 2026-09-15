@@ -1,7 +1,7 @@
 import { MAP_H, MAP_W, SAVE_SCHEMA, START_YEAR } from '../../core/constants';
 import { newLedgerMonth } from '../../core/factory';
 import { Rng, hash2 } from '../../core/rng';
-import { Terrain, type GameState, type Industry, type Town, type World } from '../../core/types';
+import { Terrain, type GameState, type Industry, type ScenarioState, type Town, type World } from '../../core/types';
 import { B } from '../../data/balance';
 import { CARGO_COUNT } from '../../data/cargo';
 import { INDUSTRIES, isRawIndustry, type IndustryType } from '../../data/industries';
@@ -11,13 +11,57 @@ import { Occ, isBuildable } from '../terrain';
 import { TOWN_NAMES, industryName } from './names';
 import { fbm } from './noise';
 
+/** A map region predicate in tile coordinates (used to bias placement in scenarios). */
+export type Region = (x: number, y: number, w: number, h: number) => boolean;
+
+export interface PlacementBias {
+  towns?: Region;
+  /** raw industries (mines, forests, farms, wells) */
+  raw?: Region;
+  processors?: Region;
+}
+
+/** Knobs of the procedural terrain. Quantiles are fractions of the height distribution. */
+export interface TerrainParams {
+  /** height quantile below which tiles are water */
+  water: number;
+  /** quantile above which tiles are hills */
+  hills: number;
+  /** quantile above which tiles are mountains (> 1 = none) */
+  mountain: number;
+  /** moisture quantile above which grass becomes forest */
+  forest: number;
+  /** how strongly the height drops toward the map edge (0 = not at all) */
+  falloff: number;
+  /** noise feature size in tiles */
+  scale: number;
+  /**
+   * Extra height per tile (after the quantile thresholds are fixed): large positive values force
+   * mountains, large negative values force water. Coordinates are normalised 0..1.
+   */
+  shape?: (nx: number, ny: number, noise: (x: number, y: number) => number, w: number, h: number) => number;
+  /** land components at least this many tiles big are usable (default: only the largest) */
+  minIsland?: number;
+}
+
+export const DEFAULT_TERRAIN: TerrainParams = { water: 0.17, hills: 0.8, mountain: 0.94, forest: 0.62, falloff: 0.45, scale: 14 };
+
 export interface GenOptions {
   width?: number;
   height?: number;
   startMoney?: number;
+  startYear?: number;
+  terrain?: TerrainParams;
+  /** absolute number of towns to aim for (default: 12 scaled by map area) */
+  townCount?: number;
+  /** two big cities as far apart as possible, everything else small */
+  twinCities?: boolean;
+  /** per IndustryType.key: [min, max] to place (0 = none); default from the type */
+  industryCounts?: Partial<Record<string, readonly [number, number]>>;
+  bias?: PlacementBias;
+  scenario?: ScenarioState | null;
 }
 
-/** Generate a complete new-game state from a seed. Deterministic. */
 /** Preset map sizes (tiles). */
 export const MAP_SIZES = {
   small: { w: 64, h: 48, name: 'Small (64×48)' },
@@ -27,36 +71,43 @@ export const MAP_SIZES = {
 } as const;
 export type MapSizeKey = keyof typeof MAP_SIZES;
 
+/** Generate a complete new-game state from a seed. Deterministic. */
 export function generateWorld(seed: number, opts: GenOptions = {}): GameState {
   const w = opts.width ?? MAP_W;
   const h = opts.height ?? MAP_H;
   const rng = new Rng(hash2(seed, 0x7a11));
   /** density scale relative to the medium map: towns and industries grow with the area */
   const areaScale = (w * h) / (MAP_W * MAP_H);
+  const params = opts.terrain ?? DEFAULT_TERRAIN;
 
   let terrainResult: { terrain: Uint8Array; mainland: Uint8Array } | null = null;
   for (let attempt = 0; attempt < 10 && !terrainResult; attempt++) {
-    terrainResult = genTerrain(hash2(seed, 0x1000 + attempt), w, h, attempt === 9);
+    terrainResult = genTerrain(hash2(seed, 0x1000 + attempt), w, h, attempt === 9 || params.minIsland !== undefined, params);
   }
   const { terrain, mainland } = terrainResult!;
   const world: World = { seed, width: w, height: h, terrain, track: new Uint8Array(w * h), track2: new Uint8Array(w * h) };
   const occ = new Uint8Array(w * h);
 
-  let towns = placeTowns(rng, world, mainland, occ, areaScale);
+  let towns = placeTowns(rng, world, mainland, occ, areaScale, opts);
   const scratch = new AStarScratch(w * h);
   towns = validateTowns(world, occ, towns, scratch);
-  const industries = placeIndustries(rng, world, mainland, occ, towns, scratch, areaScale);
+  const industries = placeIndustries(rng, world, mainland, occ, towns, scratch, areaScale, opts);
+  return assembleState(world, towns, industries, opts);
+}
 
+/** Number ids, build the economy and wrap everything into a fresh game state. */
+export function assembleState(world: World, towns: Town[], industries: Industry[], opts: GenOptions = {}): GameState {
   let nextId = 1;
   for (const t of towns) t.id = nextId++;
   for (const i of industries) i.id = nextId++;
-
+  const startYear = opts.startYear ?? START_YEAR;
+  const money = opts.startMoney ?? B.startMoney;
   return {
     schema: SAVE_SCHEMA,
     tick: 0,
-    startYear: START_YEAR,
+    startYear,
     speed: 1,
-    rng: hash2(seed, 0x5157) | 0,
+    rng: hash2(world.seed, 0x5157) | 0,
     nextId,
     world,
     towns,
@@ -64,7 +115,7 @@ export function generateWorld(seed: number, opts: GenOptions = {}): GameState {
     stations: [],
     lines: [],
     trains: [],
-    economy: { money: opts.startMoney ?? B.startMoney, startMoney: opts.startMoney ?? B.startMoney, loan: 0, ledger: [newLedgerMonth(START_YEAR, 0)], yearly: [], monthsInsolvent: 0, cashHistory: [] },
+    economy: { money, startMoney: money, loan: 0, ledger: [newLedgerMonth(startYear, 0)], yearly: [], monthsInsolvent: 0, cashHistory: [] },
     notifications: [],
     notificationSeq: 0,
     notificationsSeen: 0,
@@ -72,6 +123,7 @@ export function generateWorld(seed: number, opts: GenOptions = {}): GameState {
     stats: { paxDelivered: 0, cargoDelivered: 0, revenueTotal: 0, trainsBought: 0, byCargo: new Array(CARGO_COUNT).fill(0) },
     tutorialStep: 0,
     contracts: [],
+    scenario: opts.scenario ?? null,
   };
 }
 
@@ -79,10 +131,12 @@ export function generateWorld(seed: number, opts: GenOptions = {}): GameState {
 // terrain
 
 function quantile(sorted: Float32Array, q: number): number {
+  if (q >= 1) return Infinity;
   return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
 }
 
-function genTerrain(seed: number, w: number, h: number, force: boolean): { terrain: Uint8Array; mainland: Uint8Array } | null {
+/** Procedural terrain; null when the largest land mass is too small (caller retries with another seed). */
+export function genTerrain(seed: number, w: number, h: number, force: boolean, p: TerrainParams = DEFAULT_TERRAIN): { terrain: Uint8Array; mainland: Uint8Array } | null {
   const n = w * h;
   const height = new Float32Array(n);
   const moist = new Float32Array(n);
@@ -90,18 +144,23 @@ function genTerrain(seed: number, w: number, h: number, force: boolean): { terra
   const cy = h / 2;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      let v = fbm(seed, x / 14, y / 14, 5);
+      let v = fbm(seed, x / p.scale, y / p.scale, 5);
       const d = Math.max(Math.abs(x - cx) / cx, Math.abs(y - cy) / cy);
       const f = Math.max(0, Math.min(1, (d - 0.72) / 0.28));
-      v *= 1 - 0.45 * f * f;
+      v *= 1 - p.falloff * f * f;
       height[y * w + x] = v;
       moist[y * w + x] = fbm(seed + 7919, x / 20 + 100, y / 20 + 100, 3);
     }
   }
   const sorted = height.slice().sort();
-  const tWater = quantile(sorted, 0.17);
-  const tHills = quantile(sorted, 0.8);
-  const tMountain = quantile(sorted, 0.94);
+  const tWater = quantile(sorted, p.water);
+  const tHills = quantile(sorted, p.hills);
+  const tMountain = quantile(sorted, p.mountain);
+  if (p.shape) {
+    // shapes are applied after the thresholds are fixed, so they override the noise
+    const noise = (x: number, y: number) => fbm(seed + 31, x * 4, y * 4, 3);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) height[y * w + x] += p.shape(x / w, y / h, noise, w, h);
+  }
   const terrain = new Uint8Array(n);
   const grassMoist: number[] = [];
   for (let i = 0; i < n; i++) {
@@ -115,10 +174,15 @@ function genTerrain(seed: number, w: number, h: number, force: boolean): { terra
     }
   }
   const sortedMoist = Float32Array.from(grassMoist).sort();
-  const tForest = quantile(sortedMoist, 0.62);
+  const tForest = quantile(sortedMoist, p.forest);
   for (let i = 0; i < n; i++) if (terrain[i] === Terrain.Grass && moist[i] > tForest) terrain[i] = Terrain.Forest;
 
-  // majority filter: remove isolated water / mountain tiles
+  majorityFilter(terrain, w, h);
+  return landMass(terrain, w, h, force, p.minIsland);
+}
+
+/** Remove isolated water / mountain tiles. */
+export function majorityFilter(terrain: Uint8Array, w: number, h: number): void {
   const copy = terrain.slice();
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -144,8 +208,14 @@ function genTerrain(seed: number, w: number, h: number, force: boolean): { terra
       }
     }
   }
+}
 
-  // largest land component (4-connected, non-water)
+/**
+ * Usable land: the largest 4-connected land component, or every component of at least
+ * `minIsland` tiles. Returns null when the largest component is too small and `force` is off.
+ */
+export function landMass(terrain: Uint8Array, w: number, h: number, force: boolean, minIsland?: number): { terrain: Uint8Array; mainland: Uint8Array } | null {
+  const n = w * h;
   const comp = new Int32Array(n).fill(-1);
   const sizes: number[] = [];
   const stack: number[] = [];
@@ -174,7 +244,11 @@ function genTerrain(seed: number, w: number, h: number, force: boolean): { terra
   for (let i = 1; i < sizes.length; i++) if (sizes[i] > sizes[bestId]) bestId = i;
   if (!force && sizes[bestId] < 0.65 * n) return null;
   const mainland = new Uint8Array(n);
-  for (let i = 0; i < n; i++) if (comp[i] === bestId) mainland[i] = 1;
+  for (let i = 0; i < n; i++) {
+    const c = comp[i];
+    if (c < 0) continue;
+    if (c === bestId || (minIsland !== undefined && sizes[c] >= minIsland)) mainland[i] = 1;
+  }
   return { terrain, mainland };
 }
 
@@ -194,15 +268,31 @@ function countAround(world: World, x: number, y: number, r: number, pred: (t: nu
   return c;
 }
 
-function placeTowns(rng: Rng, world: World, mainland: Uint8Array, occ: Uint8Array, areaScale = 1): Town[] {
+export function newTown(name: string, x: number, y: number, population: number): Town {
+  return {
+    id: 0,
+    name,
+    x,
+    y,
+    population,
+    tiles: [],
+    growthPoints: 0,
+    deliveredMonth: new Array(CARGO_COUNT).fill(0),
+    deliveredLastMonth: new Array(CARGO_COUNT).fill(0),
+  };
+}
+
+function placeTowns(rng: Rng, world: World, mainland: Uint8Array, occ: Uint8Array, areaScale = 1, opts: GenOptions = {}): Town[] {
   const w = world.width;
   const h = world.height;
-  const target = Math.max(4, Math.round(12 * areaScale) + rng.intRange(-2, 2));
+  const target = Math.max(4, opts.townCount ?? Math.round(12 * areaScale) + rng.intRange(-2, 2));
+  const region = opts.bias?.towns;
   const candidates: number[] = [];
   for (let y = 4; y < h - 4; y++) {
     for (let x = 4; x < w - 4; x++) {
       const t = y * w + x;
       if (!mainland[t] || world.terrain[t] !== Terrain.Grass) continue;
+      if (region && !region(x, y, w, h)) continue;
       if (countAround(world, x, y, 3, (v) => v === Terrain.Grass || v === Terrain.Forest) < 34) continue;
       candidates.push(t);
     }
@@ -228,8 +318,30 @@ function placeTowns(rng: Rng, world: World, mainland: Uint8Array, occ: Uint8Arra
     }
   };
   tryPick(11);
-  if (picked.length < 8) tryPick(9);
-  if (picked.length < 6) tryPick(7);
+  if (picked.length < Math.min(8, target)) tryPick(9);
+  if (picked.length < Math.min(6, target)) tryPick(7);
+
+  if (opts.twinCities && picked.length >= 2) {
+    // the two cities are the most distant pair; move them to the front
+    let bi = 0;
+    let bj = 1;
+    let bd = -1;
+    for (let i = 0; i < picked.length; i++) {
+      for (let j = i + 1; j < picked.length; j++) {
+        const d = Math.hypot((picked[i] % w) - (picked[j] % w), ((picked[i] / w) | 0) - ((picked[j] / w) | 0));
+        if (d > bd) {
+          bd = d;
+          bi = i;
+          bj = j;
+        }
+      }
+    }
+    const a = picked[bi];
+    const b = picked[bj];
+    const rest = picked.filter((_, i) => i !== bi && i !== bj);
+    picked.length = 0;
+    picked.push(a, b, ...rest);
+  }
 
   const names = rng.shuffle([...TOWN_NAMES]);
   const towns: Town[] = [];
@@ -237,19 +349,10 @@ function placeTowns(rng: Rng, world: World, mainland: Uint8Array, occ: Uint8Arra
     const x = t % w;
     const y = (t / w) | 0;
     let pop: number;
-    if (i < 2) pop = rng.intRange(2000, 3500);
+    if (opts.twinCities) pop = i < 2 ? rng.intRange(5000, 6500) : Math.round(Math.exp(rng.range(Math.log(300), Math.log(1200))) / 10) * 10;
+    else if (i < 2) pop = rng.intRange(2000, 3500);
     else pop = Math.round(Math.exp(rng.range(Math.log(300), Math.log(2500))) / 10) * 10;
-    const town: Town = {
-      id: 0,
-      name: names[i % names.length],
-      x,
-      y,
-      population: pop,
-      tiles: [],
-      growthPoints: 0,
-      deliveredMonth: new Array(CARGO_COUNT).fill(0),
-      deliveredLastMonth: new Array(CARGO_COUNT).fill(0),
-    };
+    const town = newTown(names[i % names.length], x, y, pop);
     growTownBlob(rng, world, mainland, occ, town, 6 + Math.floor(pop / 150));
     towns.push(town);
   });
@@ -290,7 +393,7 @@ export function growTownBlob(rng: Rng, world: World, mainland: Uint8Array | null
 }
 
 /** Nearest free, buildable tile to a point (ring search), or -1. */
-function accessTile(world: World, occ: Uint8Array, x: number, y: number, maxR = 4): number {
+export function accessTile(world: World, occ: Uint8Array, x: number, y: number, maxR = 4): number {
   const w = world.width;
   const h = world.height;
   for (let r = 0; r <= maxR; r++) {
@@ -321,7 +424,6 @@ function routeAffordable(world: World, occ: Uint8Array, a: number, b: number, sc
 /** Remove towns that cannot be affordably connected to either of their two nearest neighbours. */
 function validateTowns(world: World, occ: Uint8Array, towns: Town[], scratch: AStarScratch): Town[] {
   if (towns.length <= 4) return towns;
-  const w = world.width;
   const keep: Town[] = [];
   const removed: Town[] = [];
   for (const town of towns) {
@@ -336,37 +438,64 @@ function validateTowns(world: World, occ: Uint8Array, towns: Town[], scratch: AS
     else removed.push(town);
   }
   for (const t of removed) for (const tile of t.tiles) occ[tile] = Occ.Free;
-  void w;
   return keep;
 }
 
 // ---------------------------------------------------------------------------------------------
 // industries
 
-function placeIndustries(rng: Rng, world: World, mainland: Uint8Array, occ: Uint8Array, towns: Town[], scratch: AStarScratch, areaScale = 1): Industry[] {
+export function newIndustry(type: IndustryType, x: number, y: number, name: string): Industry {
+  return {
+    id: 0,
+    type: type.id,
+    name,
+    x,
+    y,
+    level: 1,
+    outputAccum: type.outputs.map(() => 0),
+    inputStock: type.inputs.map(() => 0),
+    producedMonth: 0,
+    transportedMonth: 0,
+    producedLastMonth: 0,
+    transportedLastMonth: 0,
+    monthsUnserved: 0,
+    lowServiceMonths: 0,
+  };
+}
+
+/** Whether a 2x2 industry at (x, y) fits: buildable, free, a free ring around it, 5 tiles from other industries. */
+export function industryFootprintOk(world: World, mainland: Uint8Array | null, occ: Uint8Array, industries: Industry[], x: number, y: number): boolean {
+  const w = world.width;
+  const h = world.height;
+  if (x < 2 || y < 2 || x + 1 >= w - 2 || y + 1 >= h - 2) return false;
+  for (let dy = 0; dy < 2; dy++) {
+    for (let dx = 0; dx < 2; dx++) {
+      const t = (y + dy) * w + x + dx;
+      if ((mainland && !mainland[t]) || !isBuildable(world.terrain[t]) || occ[t] !== Occ.Free) return false;
+    }
+  }
+  // keep a 1-tile free ring so track can pass and stations fit
+  for (let dy = -1; dy <= 2; dy++) {
+    for (let dx = -1; dx <= 2; dx++) {
+      const t = (y + dy) * w + x + dx;
+      if (occ[t] === Occ.TownBuilding || occ[t] === Occ.Industry) return false;
+    }
+  }
+  for (const ind of industries) if (Math.hypot(ind.x - x, ind.y - y) < 5) return false;
+  return true;
+}
+
+export function commitIndustry(world: World, occ: Uint8Array, industries: Industry[], ind: Industry): void {
+  const w = world.width;
+  industries.push(ind);
+  for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) occ[(ind.y + dy) * w + ind.x + dx] = Occ.Industry;
+}
+
+function placeIndustries(rng: Rng, world: World, mainland: Uint8Array, occ: Uint8Array, towns: Town[], scratch: AStarScratch, areaScale = 1, opts: GenOptions = {}): Industry[] {
   const w = world.width;
   const h = world.height;
   const industries: Industry[] = [];
   const perTownCount = new Map<string, number>();
-
-  const footprintOk = (x: number, y: number): boolean => {
-    if (x < 2 || y < 2 || x + 1 >= w - 2 || y + 1 >= h - 2) return false;
-    for (let dy = 0; dy < 2; dy++) {
-      for (let dx = 0; dx < 2; dx++) {
-        const t = (y + dy) * w + x + dx;
-        if (!mainland[t] || !isBuildable(world.terrain[t]) || occ[t] !== Occ.Free) return false;
-      }
-    }
-    // keep a 1-tile free ring so track can pass and stations fit
-    for (let dy = -1; dy <= 2; dy++) {
-      for (let dx = -1; dx <= 2; dx++) {
-        const t = (y + dy) * w + x + dx;
-        if (occ[t] === Occ.TownBuilding || occ[t] === Occ.Industry) return false;
-      }
-    }
-    for (const ind of industries) if (Math.hypot(ind.x - x, ind.y - y) < 5) return false;
-    return true;
-  };
 
   const nearestTownDist = (x: number, y: number): number => {
     let best = Infinity;
@@ -388,7 +517,9 @@ function placeIndustries(rng: Rng, world: World, mainland: Uint8Array, occ: Uint
   };
 
   const fits = (type: IndustryType, x: number, y: number, strict: boolean): boolean => {
-    if (!footprintOk(x, y)) return false;
+    if (!industryFootprintOk(world, mainland, occ, industries, x, y)) return false;
+    const region = isRawIndustry(type) ? opts.bias?.raw : opts.bias?.processors;
+    if (region && !region(x + 1, y + 1, w, h)) return false;
     if (!strict) return true;
     const cx = x + 1;
     const cy = y + 1;
@@ -422,28 +553,9 @@ function placeIndustries(rng: Rng, world: World, mainland: Uint8Array, occ: Uint
     const town = nearestTown(x, y);
     const idx = perTownCount.get(town.name) ?? 0;
     perTownCount.set(town.name, idx + 1);
-    return {
-      id: 0,
-      type: type.id,
-      name: industryName(town.name, type.name, idx),
-      x,
-      y,
-      level: 1,
-      outputAccum: type.outputs.map(() => 0),
-      inputStock: type.inputs.map(() => 0),
-      producedMonth: 0,
-      transportedMonth: 0,
-      producedLastMonth: 0,
-      transportedLastMonth: 0,
-      monthsUnserved: 0,
-      lowServiceMonths: 0,
-    };
+    return newIndustry(type, x, y, industryName(town.name, type.name, idx));
   };
 
-  const commit = (ind: Industry) => {
-    industries.push(ind);
-    for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) occ[(ind.y + dy) * w + ind.x + dx] = Occ.Industry;
-  };
   const uncommit = (ind: Industry) => {
     industries.splice(industries.indexOf(ind), 1);
     for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) occ[(ind.y + dy) * w + ind.x + dx] = Occ.Free;
@@ -452,13 +564,14 @@ function placeIndustries(rng: Rng, world: World, mainland: Uint8Array, occ: Uint
   // raw industries first, then processors (which are validated against a supplier)
   const order = [...INDUSTRIES].sort((a, b) => Number(isRawIndustry(b)) - Number(isRawIndustry(a)));
   for (const type of order) {
-    const count = Math.max(1, Math.round(rng.intRange(type.count[0], type.count[1]) * areaScale));
+    const range = opts.industryCounts?.[type.key] ?? type.count;
+    const count = range[1] <= 0 ? 0 : Math.max(1, Math.round(rng.intRange(range[0], range[1]) * areaScale));
     for (let i = 0; i < count; i++) {
       let placed: Industry | null = null;
       for (let round = 0; round < 3 && !placed; round++) {
         const ind = tryPlace(type);
         if (!ind) break;
-        commit(ind);
+        commitIndustry(world, occ, industries, ind);
         if (isRawIndustry(type) || round === 2) {
           placed = ind;
           break;

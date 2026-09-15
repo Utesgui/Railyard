@@ -1,5 +1,7 @@
 import { MAP_H, MAP_W } from '../core/constants';
 import { MAP_SIZES, type MapSizeKey } from '../world/gen/generate';
+import { terrainPreset, type TerrainPresetId } from '../world/gen/presets';
+import { generateScenario, scenarioById } from '../data/scenarios';
 import type { GameState } from '../core/types';
 import { Camera } from '../render/camera';
 import { Minimap } from '../render/minimap';
@@ -14,6 +16,14 @@ import { Events } from './events';
 import { Loop } from './loop';
 import { createRuntime, type Runtime } from './runtime';
 import { notify } from '../sim/notify';
+
+export interface NewGameOptions {
+  seed: number;
+  size?: MapSizeKey;
+  startMoney?: number;
+  startYear?: number;
+  preset?: TerrainPresetId;
+}
 
 /** Owns the state, runtime, camera, renderer and loop. DOM UI lives in ui/UI.ts. */
 export class Game {
@@ -65,12 +75,24 @@ export class Game {
     window.addEventListener('pagehide', saveOnLeave);
   }
 
-  newGame(seed: number, startMoney?: number, size: MapSizeKey = 'medium'): void {
-    const dims = MAP_SIZES[size] ?? MAP_SIZES.medium;
-    this.setState(generateWorld(seed, { startMoney, width: dims.w, height: dims.h }));
+  newGame(o: NewGameOptions): void {
+    const dims = MAP_SIZES[o.size ?? 'medium'] ?? MAP_SIZES.medium;
+    const preset = terrainPreset(o.preset);
+    this.setState(generateWorld(o.seed, { startMoney: o.startMoney, startYear: o.startYear, width: dims.w, height: dims.h, terrain: preset.params, bias: preset.bias }));
     const town = this.state.towns[0];
     if (town) this.cam.centerOnTile(town.y * this.state.world.width + town.x);
-    notify(this.state, this.events, 'info', `Welcome to Railyard. Seed ${seed}. Build track (T), place stations (S), create a line (L) and buy a train (V).`, undefined, false);
+    notify(this.state, this.events, 'info', `Welcome to Railyard. Seed ${o.seed}. Build track (T), place stations (S), create a line (L) and buy a train (V).`, undefined, false);
+  }
+
+  /** Start a scenario from data/scenarios.ts. Returns false for an unknown id. */
+  startScenario(id: string): boolean {
+    const def = scenarioById(id);
+    if (!def) return false;
+    this.setState(generateScenario(def));
+    const town = this.state.towns[0];
+    if (town) this.cam.centerOnTile(town.y * this.state.world.width + town.x);
+    notify(this.state, this.events, 'info', `${def.name}: ${def.tagline} Open Goals (G) to see the objectives.`, undefined, false);
+    return true;
   }
 
   loadState(state: GameState): void {

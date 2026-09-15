@@ -28,7 +28,7 @@ test.describe('HUD', () => {
     await page.waitForFunction(() => !!window.__game);
     await page.evaluate(() => window.__game.cmd.setSpeed(2));
     await page.keyboard.press('o');
-    await page.getByRole('button', { name: 'New game' }).click();
+    await page.getByRole('button', { name: 'Quick load' }).click();
     const dialog = page.locator('.overlay-dialog .dialog');
     await expect(dialog).toBeVisible();
     expect(await page.evaluate(() => window.__game.state.speed)).toBe(0);
@@ -150,5 +150,51 @@ test.describe('audit 2', () => {
     await page.locator('#panel .panel-tabs button', { hasText: 'Industries' }).click();
     const inds = await page.evaluate(() => window.__game.state.industries.length);
     await expect(page.locator('#panel .list-row')).toHaveCount(inds);
+  });
+});
+
+test.describe('start page', () => {
+  test('shows on a first visit, starts a new game and a scenario, and Escape returns to a running game', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForFunction(() => !!window.__game);
+    const start = page.locator('#start');
+    await expect(start).toBeVisible();
+    expect(await page.evaluate(() => window.__game.state.speed)).toBe(0);
+    // hotkeys stay off while the menu is open
+    await page.keyboard.press('f');
+    await expect(page.locator('#panel')).toBeHidden();
+    await page.getByRole('radio', { name: /Highlands/ }).click();
+    await page.getByRole('button', { name: 'Start game' }).click();
+    await expect(start).toBeHidden();
+    expect(await page.evaluate(() => window.__game.state.speed)).toBe(1);
+    expect(await page.evaluate(() => window.__game.state.scenario)).toBeNull();
+    // main menu from settings pauses; Escape resumes
+    await page.evaluate(() => window.__game.cmd.setSpeed(4));
+    await page.keyboard.press('o');
+    await page.getByRole('button', { name: 'Main menu' }).click();
+    await expect(start).toBeVisible();
+    expect(await page.evaluate(() => window.__game.state.speed)).toBe(0);
+    await page.keyboard.press('Escape');
+    await expect(start).toBeHidden();
+    expect(await page.evaluate(() => window.__game.state.speed)).toBe(4);
+    // a scenario replaces the game after confirmation and opens with goals
+    await page.getByRole('button', { name: 'Main menu' }).click();
+    await page.getByRole('button', { name: 'Scenarios' }).click();
+    await page.getByRole('option', { name: /Passau District/ }).click();
+    await page.getByRole('button', { name: /Play Passau District/ }).click();
+    await page.getByRole('button', { name: 'Start scenario' }).click();
+    await expect(start).toBeHidden();
+    expect(await page.evaluate(() => window.__game.state.scenario?.id)).toBe('passau');
+    expect(await page.evaluate(() => window.__game.state.towns.some((t) => t.name === 'Passau'))).toBe(true);
+    await page.keyboard.press('g');
+    await expect(page.locator('#panel h2')).toHaveText('Passau District');
+    await expect(page.locator('#panel .goal')).toHaveCount(5);
+    await expect(page.locator('#toolbar .btn', { hasText: 'Goals' }).locator('.badge-count')).toHaveText('0/5');
+  });
+
+  test('a seed in the URL skips the start page', async ({ page }) => {
+    await page.goto('/?seed=4242');
+    await page.waitForFunction(() => !!window.__game);
+    await expect(page.locator('#start')).toBeHidden();
   });
 });

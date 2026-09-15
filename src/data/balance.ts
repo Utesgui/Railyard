@@ -75,4 +75,7 @@ export const B = {
   timeBonusMax: 1.25,
   timeBonusMin: 0.4,
   distanceCap: 40,
+  /** local price factors (sim/prices.ts) are clamped to this range */
+  priceMin: 0.75,
+  priceMax: 1.35,
 } as const;

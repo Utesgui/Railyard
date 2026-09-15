@@ -1,5 +1,6 @@
 import { NONE } from '../core/constants';
 import { dirBetween, edgeId } from '../core/grid';
+import type { PriceQuote } from '../sim/prices';
 import type { GameState, Id, Industry, Line, Station, Town, Train, World } from '../core/types';
 import { TrainState } from '../core/types';
 import { CARGO_COUNT } from '../data/cargo';
@@ -51,6 +52,8 @@ export interface Runtime {
   acceptors: Set<Id>[];
   /** station ids that have at least one line stop */
   served: Set<Id>;
+  /** memoised price quotes (sim/prices.ts); cleared monthly */
+  prices: Map<string, PriceQuote>;
 }
 
 export function createRuntime(state: GameState): Runtime {
@@ -84,6 +87,7 @@ export function createRuntime(state: GameState): Runtime {
     catchment: new Map(),
     acceptors: Array.from({ length: CARGO_COUNT }, () => new Set<Id>()),
     served: new Set(),
+    prices: new Map(),
   };
   rebuildAll(state, rt);
   return rt;

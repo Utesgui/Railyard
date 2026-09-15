@@ -1,13 +1,13 @@
 import type { Game } from '../../app/Game';
 import { seedFromString } from '../../core/rng';
-import { MAP_SIZES, type MapSizeKey } from '../../world/gen/generate';
+import { scenarioById } from '../../data/scenarios';
 import { dayToDate, formatDate, formatMonth } from '../../core/time';
 import type { Notification } from '../../core/types';
 import { B } from '../../data/balance';
 import { CARGO } from '../../data/cargo';
 import { ledgerNet, ledgerTotalCosts, ledgerTotalRevenue } from '../../sim/economy';
 import { SLOTS, deleteSlot, exportToFile, getSetting, importFromFile, loadFromSlot, saveToSlot, setSetting, slotInfo } from '../../save/storage';
-import { badge, button, clear, emptyState, h, kpi, kpis, listRow, row, section, sectionMeta, tabs } from '../dom';
+import { badge, button, clear, emptyState, h, kpi, kpis, kv, kvGrid, listRow, row, section, sectionMeta, tabs } from '../dom';
 import { fmtInt, fmtMoney, fmtMoneyShort } from '../format';
 import { barChart, lineChart } from '../chart';
 import { monthKey, monthLabels } from './stats';
@@ -34,7 +34,11 @@ function field(label: string, control: Node, hint?: string): HTMLElement {
   return h('div', { className: 'field-row' }, h('span', { className: 'lbl' }, label), h('div', { className: 'grow' }, control), hint ? h('span', { className: 'hint field-hint' }, hint) : null);
 }
 
-export function registerSystemPanels(host: PanelHost): void {
+export interface SystemPanelHooks {
+  openMenu(): void;
+}
+
+export function registerSystemPanels(host: PanelHost, hooks: SystemPanelHooks = { openMenu: () => {} }): void {
   host.register('finances', (game: Game, host) => {
     const mem = host.state<{ months: 12 | 36; cargoTab: 'this' | 'last' }>('finances', () => ({ months: 12, cargoTab: 'last' }));
     const kpiWrap = h('div');
@@ -167,19 +171,6 @@ export function registerSystemPanels(host: PanelHost): void {
   });
 
   host.register('settings', (game: Game, host) => {
-    const seedInput = h('input', { type: 'text', value: String(game.state.world.seed), placeholder: 'seed', attrs: { 'aria-label': 'Seed' } });
-    const moneySel = h('select', { attrs: { 'aria-label': 'Start money' } });
-    for (const [v, label] of [[250_000, '$250k (tight)'], [500_000, '$500k (standard)'], [1_000_000, '$1M (relaxed)'], [2_000_000, '$2M (easy)'], [10_000_000, '$10M (sandbox)']] as [number, string][]) {
-      const opt = h('option', { value: String(v) }, label);
-      if (v === getSetting<number>('startMoney', 500_000)) opt.selected = true;
-      moneySel.appendChild(opt);
-    }
-    const sizeSel = h('select', { attrs: { 'aria-label': 'Map size' } });
-    for (const key of Object.keys(MAP_SIZES) as MapSizeKey[]) {
-      const opt = h('option', { value: key }, MAP_SIZES[key].name);
-      if (key === getSetting<MapSizeKey>('mapSize', 'medium')) opt.selected = true;
-      sizeSel.appendChild(opt);
-    }
     const scaleSel = h('select', { attrs: { 'aria-label': 'UI size' }, onChange: () => setUiScale(Number(scaleSel.value)) });
     for (const v of UI_SCALES) {
       const opt = h('option', { value: String(v) }, `${Math.round(v * 100)}%`);
@@ -264,18 +255,13 @@ export function registerSystemPanels(host: PanelHost): void {
     const cargoToggle = h('input', { type: 'checkbox', checked: game.ui.showCargo, onChange: () => (game.ui.showCargo = cargoToggle.checked) });
     const catchToggle = h('input', { type: 'checkbox', checked: game.ui.showCatchment, onChange: () => (game.ui.showCatchment = catchToggle.checked) });
     const linesToggle = h('input', { type: 'checkbox', checked: game.ui.showLines, onChange: () => (game.ui.showLines = linesToggle.checked) });
-    const newGameBtn = button([uiIcon('play', 14), t('newGame')], () => {
-      confirmDialog(game, 'Start a new game?', 'Unsaved progress is lost. Save first if you want to keep the current game.', () => {
-        setSetting('startMoney', Number(moneySel.value));
-        setSetting('mapSize', sizeSel.value);
-        game.newGame(seedFromString(seedInput.value || '1'), Number(moneySel.value), sizeSel.value as MapSizeKey);
-        host.close();
-      }, 'Start new game', true);
-    }, 'btn primary');
+    const menuBtn = button([uiIcon('play', 14), 'Main menu'], () => hooks.openMenu(), 'btn primary', 'New game, scenarios, load');
+    const sc = game.state.scenario;
+    const scenarioName = sc ? (scenarioById(sc.id)?.name ?? sc.id) : 'Free play';
     const el = host.frame(
       host.header(t('toolSettings'), { eyebrow: 'Game' }),
       host.body(
-        section(t('newGame'), field(t('seed'), row(seedInput, button('Random', () => (seedInput.value = String((Math.random() * 0xffffffff) >>> 0)), 'btn small'))), field('Start money', moneySel), field('Map size', sizeSel), row(newGameBtn)),
+        section('Game', kvGrid(kv(t('seed'), String(game.state.world.seed)), kv('Map', `${game.state.world.width}×${game.state.world.height}`), kv('Scenario', scenarioName)), row(menuBtn, button([uiIcon('star', 14), 'Goals'], () => host.push('goals'), 'btn small')), h('div', { className: 'hint' }, 'New games and scenarios start from the main menu; the running game is kept until you confirm.')),
         section('Saves', slotsEl, row(button([uiIcon('save', 14), 'Quick save'], () => game.quickSave(), 'btn small', 'Ctrl+S'), button('Quick load', () => confirmDialog(game, 'Load the quick save?', 'Unsaved progress in the current game is lost.', () => game.quickLoad(), 'Load'), 'btn small', 'Ctrl+L'), button(`${t('export')} file`, () => exportToFile(game.state, `railyard-${game.state.world.seed}`), 'btn small'), button(`${t('import')} file`, () => importInput.click(), 'btn small'), importInput), field(t('autosave'), autosaveSel)),
         section('Sound', field('Volume', row(h('div', { className: 'grow' }, volume), volumeVal, muteBtn))),
         section('Display', field('UI size', scaleSel, 'HUD only, the map is unaffected'), field('Year report', yearReportSel, 'the report is always available from the alerts'), h('label', { className: 'row' }, catchToggle, ' Show station coverage on the map (H)'), h('label', { className: 'row' }, linesToggle, ' Draw lines on the map'), h('label', { className: 'row' }, cargoToggle, ' Show waiting cargo at stations on the map')),

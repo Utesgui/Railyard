@@ -10,6 +10,7 @@ import { CARGO, CARGO_COUNT, Cargo, TOWN_ACCEPTS, cargoName } from '../../data/c
 import { WAGONS } from '../../data/vehicles';
 import { nextHop } from '../cargoRouting';
 import { deliveryRevenue, earn } from '../economy';
+import { priceMultiplier } from '../prices';
 import { deliverToIndustry } from '../industry';
 import { contractDelivery } from '../contracts';
 import { notify } from '../notify';
@@ -287,8 +288,12 @@ function exchangeCargo(state: GameState, rt: Runtime, train: Train, line: Line, 
       const acceptsHere = rt.acceptors[wg.cargo].has(here);
       const deliverHere = wg.dest === here || (hop < 0 && acceptsHere);
       const dist = octileT(wg.originTile, station.tile, w);
+      // local prices: the producer's premium at the origin and the receiver's price at the final destination
+      const originSt = rt.stationById.get(rt.stationAt[wg.originTile]);
+      const destSt = deliverHere ? station : rt.stationById.get(wg.dest);
+      const price = priceMultiplier(state, rt, originSt, destSt, wg.cargo);
       if (deliverHere) {
-        const rev = deliveryRevenue(wg.cargo, wg.amount, dist, day - wg.loadedDay);
+        const rev = deliveryRevenue(wg.cargo, wg.amount, dist, day - wg.loadedDay, price);
         earn(state, rev, wg.cargo);
         revenueTotal += rev;
         train.profitMonth += rev;
@@ -307,7 +312,7 @@ function exchangeCargo(state: GameState, rt: Runtime, train: Train, line: Line, 
         clearWagon(wg);
       } else if (hop !== nextStation) {
         // transfer at a hub: pay for the leg travelled, hand the cargo to the station
-        const rev = deliveryRevenue(wg.cargo, wg.amount, dist, day - wg.loadedDay);
+        const rev = deliveryRevenue(wg.cargo, wg.amount, dist, day - wg.loadedDay, price);
         earn(state, rev, wg.cargo);
         revenueTotal += rev;
         train.profitMonth += rev;

@@ -5,7 +5,7 @@ declare global {
     __game: {
       game: { cam: { centerOnTile(t: number): void; worldToScreen(x: number, y: number): { sx: number; sy: number }; zoom: number }; setTool(t: string): void; select(k: string, id: number): void; ui: { tool: string } };
       ui: { panels: { open(name: string, arg?: number): void; push(name: string, arg?: number): void; close(): void } };
-      state: { economy: { money: number }; speed: number; towns: { x: number; y: number }[]; stations: { id: number; tile: number; name: string }[]; lines: { id: number }[]; trains: { id: number; state: number }[]; world: { width: number; height: number; terrain: Uint8Array }; industries: { id: number }[]; tick: number; notifications: { id: number }[] };
+      state: { economy: { money: number }; speed: number; stations: { id: number; tile: number; name: string }[]; lines: { id: number }[]; trains: { id: number; state: number }[]; world: { width: number; height: number; terrain: Uint8Array }; industries: { id: number }[]; tick: number; notifications: { id: number }[]; scenario: { id: string; status: string } | null; towns: { x: number; y: number; name: string }[] };
       rt: { tileOcc: Uint8Array };
       cmd: { setSpeed(s: number): void; createLine(): { id?: number }; addStop(l: number, s: number): { ok: boolean }; buyTrain(l: number, loco: number, w: number[]): { ok: boolean; reason?: string; id?: number }; stopTrain(id: number): { ok: boolean } };
     };

@@ -4,6 +4,7 @@ import { uiIcon } from '../icons';
 import { t } from '../../i18n/t';
 import type { PanelHost } from '../panels/PanelHost';
 import type { ToolName } from '../uiState';
+import { scenarioGoals } from '../../sim/goals';
 
 export interface Toolbar {
   el: HTMLElement;
@@ -29,6 +30,7 @@ const MANAGE: [string, string, string, string][] = [
   ['finances', t('toolFinances'), 'F', 'finances'],
   ['contracts', 'Contracts', 'C', 'contracts'],
   ['world', 'World', 'W', 'town'],
+  ['goals', 'Goals', 'G', 'star'],
   ['settings', t('toolSettings'), 'O', 'settings'],
 ];
 
@@ -44,6 +46,10 @@ export function createToolbar(game: Game, panels: PanelHost, hooks: ToolbarHooks
   offersBadge.hidden = true;
   const contractsBtn = manageBtns[MANAGE.findIndex(([n]) => n === 'contracts')];
   contractsBtn.appendChild(offersBadge);
+  const goalsBadge = h('span', { className: 'badge-count info' });
+  goalsBadge.hidden = true;
+  const goalsBtn = manageBtns[MANAGE.findIndex(([n]) => n === 'goals')];
+  goalsBtn.appendChild(goalsBadge);
   const mapBtn = h('button', { className: 'btn map-toggle', type: 'button', title: 'Minimap (M)', attrs: { 'aria-pressed': 'false' }, onClick: () => hooks.toggleMinimap() }, uiIcon('map'), h('span', { className: 'label' }, 'Map'), h('kbd', null, 'M'));
 
   const el = h(
@@ -71,6 +77,14 @@ export function createToolbar(game: Game, panels: PanelHost, hooks: ToolbarHooks
       offersBadge.hidden = offers === 0;
       offersBadge.textContent = String(offers);
       contractsBtn.title = offers ? `Contracts (C): ${offers} open offer${offers === 1 ? '' : 's'}` : 'Contracts (C)';
+      const sc = game.state.scenario;
+      if (sc && sc.status === 'active') {
+        const goals = scenarioGoals(game.state, game.rt);
+        const done = goals.filter((g) => g.done).length;
+        goalsBadge.hidden = false;
+        goalsBadge.textContent = `${done}/${goals.length}`;
+        goalsBadge.classList.toggle('good', done === goals.length);
+      } else goalsBadge.hidden = true;
     },
   };
 }

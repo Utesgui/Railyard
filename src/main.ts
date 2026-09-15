@@ -2,6 +2,7 @@ import { Game } from './app/Game';
 import { seedFromString } from './core/rng';
 import { AUTOSAVE_SLOT, loadFromSlot } from './save/storage';
 import { UI } from './ui/UI';
+import { createStartPage } from './ui/start';
 
 const canvas = document.getElementById('map') as HTMLCanvasElement;
 const minimap = document.getElementById('minimap') as HTMLCanvasElement;
@@ -11,11 +12,15 @@ const params = new URLSearchParams(location.search);
 const seedParam = params.get('seed');
 const auto = seedParam ? null : loadFromSlot(AUTOSAVE_SLOT);
 if (auto) game.loadState(auto);
-else game.newGame(seedParam ? seedFromString(seedParam) : (Math.random() * 0xffffffff) >>> 0);
+else game.newGame({ seed: seedParam ? seedFromString(seedParam) : (Math.random() * 0xffffffff) >>> 0 });
 
 const ui = new UI(game);
 game.uiUpdate = () => ui.update();
+const start = createStartPage(game, document.getElementById('start')!);
+ui.openMenu = () => start.open('menu');
+// first visit (nothing to continue, no seed in the URL): choose a game on the start page
+if (!auto && !seedParam) start.open('first');
 game.start();
 
 // exposed for debugging and the Playwright smoke test
-(window as unknown as { __game: unknown }).__game = { game, ui, get state() { return game.state; }, get rt() { return game.rt; }, cmd: game.cmd };
+(window as unknown as { __game: unknown }).__game = { game, ui, start, get state() { return game.state; }, get rt() { return game.rt; }, cmd: game.cmd };

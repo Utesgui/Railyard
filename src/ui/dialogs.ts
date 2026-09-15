@@ -1,4 +1,6 @@
 import type { Game } from '../app/Game';
+import { scenarioById } from '../data/scenarios';
+import { scenarioGoals } from '../sim/goals';
 import type { GameState } from '../core/types';
 import { MONTHS_PER_YEAR } from '../core/constants';
 import { tickToDate } from '../core/time';
@@ -330,6 +332,25 @@ export function showGameOver(game: Game, openSettings: () => void): void {
   });
 }
 
+export function showScenarioResult(game: Game, status: 'won' | 'failed', openMenu: () => void): void {
+  const sc = game.state.scenario;
+  const def = sc ? scenarioById(sc.id) : undefined;
+  if (!def) return;
+  const goals = scenarioGoals(game.state, game.rt);
+  const list = h('div', { className: 'list' }, ...goals.map((g) => listRow({ icon: h('span', { className: g.done ? 'good' : 'muted' }, g.done ? '✓' : '·'), title: g.text, value: g.label, valueClass: g.done ? 'good' : '' })));
+  showDialog({
+    title: status === 'won' ? `Scenario complete: ${def.name}` : `Scenario failed: ${def.name}`,
+    body: [
+      h('p', null, status === 'won' ? 'Every objective is met. The company keeps running – play on, or pick the next scenario from the main menu.' : `The deadline (end of ${def.deadlineYear}) has passed with objectives still open. The game goes on without them, or start again from the main menu.`),
+      list,
+    ],
+    actions: [
+      { label: 'Main menu', onClick: openMenu },
+      { label: 'Keep playing', kind: 'primary' },
+    ],
+  });
+}
+
 export function showAchievements(game: Game): void {
   const s = game.state;
   const list = h(
@@ -355,6 +376,7 @@ const KEYS: [string, string][] = [
   ['F', 'Finances'],
   ['C', 'Contracts'],
   ['W', 'World (towns and industries)'],
+  ['G', 'Goals (scenario objectives, achievements)'],
   ['A', 'Alerts'],
   ['O', 'Settings'],
   ['H', 'Show station catchment areas'],

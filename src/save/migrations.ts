@@ -61,6 +61,11 @@ const MIGRATIONS: Record<number, Migration> = {
     for (const c of r.contracts) c.deliveryMonths ??= (c.months as number | undefined) ?? 12;
     return raw;
   },
+  // 5 -> 6: scenarios (free play has none)
+  5: (raw) => {
+    (raw as { scenario?: unknown }).scenario ??= null;
+    return raw;
+  },
 };
 
 export function migrate(raw: Record<string, unknown>, from: number): Record<string, unknown> {

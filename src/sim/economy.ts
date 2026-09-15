@@ -26,12 +26,16 @@ export function canAfford(state: GameState, amount: number): boolean {
   return state.economy.money >= amount;
 }
 
-/** Revenue for delivering `amount` units of `cargo` over `dist` tiles in `days`. */
-export function deliveryRevenue(cargo: number, amount: number, dist: number, days: number): number {
+/**
+ * Revenue for delivering `amount` units of `cargo` over `dist` tiles in `days`.
+ * `price` is the local price multiplier (supply premium at the origin × demand price at the
+ * destination, see sim/prices.ts); 1 = base value.
+ */
+export function deliveryRevenue(cargo: number, amount: number, dist: number, days: number, price = 1): number {
   const c = CARGO[cargo];
   const d = Math.min(dist, B.distanceCap) + Math.max(0, dist - B.distanceCap) * 0.25;
   const tf = Math.max(B.timeBonusMin, Math.min(B.timeBonusMax, 1.25 - 0.5 * (days / c.transitDays)));
-  return Math.round(amount * c.baseValue * d * tf);
+  return Math.round(amount * c.baseValue * price * d * tf);
 }
 
 export function ledgerTotalRevenue(l: LedgerMonth): number {

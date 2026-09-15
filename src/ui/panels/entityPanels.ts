@@ -8,6 +8,7 @@ import { t } from '../../i18n/t';
 import { cargoIcon, cargoTag, uiIcon } from '../icons';
 import type { PanelHost } from './PanelHost';
 import { industryDiagnosis, openEntity } from './shared';
+import { industryPriceEntries, priceKey, priceRows, townPriceEntries } from './priceUi';
 
 export function registerEntityPanels(host: PanelHost): void {
   host.register('industry', (game: Game, host, id) => {
@@ -19,6 +20,7 @@ export function registerEntityPanels(host: PanelHost): void {
     const statusWrap = h('div', { className: 'status' });
     const kpiWrap = h('div');
     const prodWrap = h('div');
+    const priceWrap = h('div', { className: 'list' });
     const stations = h('div', { className: 'list' });
     const goBtn = button(uiIcon('locate', 14), () => game.focusTile(ind.y * w + ind.x), 'btn icon small ghost', 'Show on map');
     goBtn.setAttribute('aria-label', 'Show on map');
@@ -29,6 +31,7 @@ export function registerEntityPanels(host: PanelHost): void {
         kpiWrap,
         section('Chain', type.inputs.length ? h('div', { className: 'row' }, h('span', { className: 'muted' }, t('consumes')), ...type.inputs.map(cargoTag)) : null, h('div', { className: 'row' }, h('span', { className: 'muted' }, t('produces')), ...type.outputs.map(cargoTag))),
         section('Production', prodWrap),
+        sectionMeta('Local prices', 'of the base value', priceWrap, h('div', { className: 'hint' }, 'What this plant pays for deliveries and what its output sells for. Hover a row for the reasons; they come from the map and are refreshed monthly.')),
         section('Stations in range', stations),
         h('div', { className: 'hint' }, raw ? 'Move at least 60% of the output regularly and production grows a level (max 8). Poor service for a year shrinks it.' : 'Deliver the inputs by train; each unit is converted into output that appears at stations in range.'),
       ),
@@ -37,10 +40,18 @@ export function registerEntityPanels(host: PanelHost): void {
     let kpiKey = '';
     let prodKey = '';
     let statusKey = '';
+    let priceK = '';
     const update = () => {
       const s = game.state;
       const rt = game.rt;
       const list = s.stations.filter((x) => rt.catchment.get(x.id)?.industries.includes(id));
+      const prices = industryPriceEntries(game, ind);
+      const pk2 = priceKey(prices);
+      if (pk2 !== priceK) {
+        priceK = pk2;
+        clear(priceWrap);
+        priceWrap.append(...priceRows(prices));
+      }
       const diag = industryDiagnosis(s, rt, ind);
       const sk = `${diag.code}|${diag.label}|${diag.hint}|${diag.stationId}`;
       if (sk !== statusKey) {
@@ -111,6 +122,7 @@ export function registerEntityPanels(host: PanelHost): void {
     const kpiWrap = h('div');
     const growthWrap = h('div');
     const delivered = h('div', { className: 'list' });
+    const priceWrap = h('div', { className: 'list' });
     const stations = h('div', { className: 'list' });
     const goBtn = button(uiIcon('locate', 14), () => game.focusTile(town.y * w + town.x), 'btn icon small ghost', 'Show on map');
     goBtn.setAttribute('aria-label', 'Show on map');
@@ -120,6 +132,7 @@ export function registerEntityPanels(host: PanelHost): void {
         kpiWrap,
         section('Growth', growthWrap),
         sectionMeta('Deliveries', 'this month · last month', delivered),
+        sectionMeta('Local prices', 'of the base value', priceWrap, h('div', { className: 'hint' }, 'What the town pays for deliveries. Bigger and remoter towns pay more; river towns get cheap barge freight. Hover a row for the reasons.')),
         section('Stations', stations),
         h('div', { className: 'hint' }, 'Towns grow with good passenger and mail service and with deliveries of planks, goods, food and fuel. Bigger towns generate more passengers.'),
       ),
@@ -127,9 +140,17 @@ export function registerEntityPanels(host: PanelHost): void {
     let stKey = '\0';
     let kpiKey = '';
     let delKey = '';
+    let priceK = '';
     const update = () => {
       const rt = game.rt;
       const threshold = Math.round(6 + town.population / 250);
+      const prices = townPriceEntries(game, town);
+      const pk = priceKey(prices);
+      if (pk !== priceK) {
+        priceK = pk;
+        clear(priceWrap);
+        priceWrap.append(...priceRows(prices));
+      }
       const kk = `${town.population}|${Math.round(town.growthPoints)}|${town.deliveredLastMonth[Cargo.Passengers] | 0}|${town.tiles.length}`;
       if (kk !== kpiKey) {
         kpiKey = kk;

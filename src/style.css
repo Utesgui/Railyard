@@ -458,3 +458,44 @@ details.chart-table .tbl-wrap { max-height: 200px; margin-top: 4px; }
 button.vehicle.add { font: inherit; font-size: var(--fs-lg); cursor: pointer; }
 button.vehicle.add:hover { color: var(--text); border-color: var(--primary); }
 .consist .vehicle.loco .name { font-size: var(--fs-sm); }
+
+/* ---- start page / main menu ---- */
+#start { position: absolute; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: var(--sp-4); background: rgba(8, 11, 15, 0.74); backdrop-filter: blur(2px); }
+#start[hidden] { display: none; }
+.start-card { display: grid; grid-template-columns: 236px minmax(0, 1fr); width: min(1060px, 100%); max-height: 100%; background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow); overflow: hidden; }
+.start-nav { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); background: var(--surface-1); border-right: 1px solid var(--border); }
+.start-nav .brand { font-size: 28px; font-weight: 800; color: var(--accent); letter-spacing: 0.5px; line-height: 1.1; }
+.start-nav .tagline { color: var(--text-3); font-size: var(--fs-sm); margin-bottom: var(--sp-3); }
+.start-nav .btn { justify-content: flex-start; }
+.start-nav .spacer { flex: 1; }
+.start-nav .foot { font-size: var(--fs-xs); color: var(--text-3); }
+.start-main { padding: var(--sp-4) var(--sp-5); overflow: auto; min-height: min(480px, 80vh); display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.start-main h2 { margin: 0; font-size: var(--fs-xl); }
+.start-main .muted { margin: 0; color: var(--text-2); }
+.start-main .section-title { font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-3); }
+.start-form { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: var(--sp-4); }
+.start-form .fields { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.preview { display: flex; flex-direction: column; gap: var(--sp-2); align-items: stretch; }
+.preview canvas { image-rendering: pixelated; border: 1px solid var(--border); border-radius: var(--radius); max-width: 100%; width: 100%; height: auto; background: #0e131a; }
+.style-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-2); }
+.style-card, .scenario-card { text-align: left; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 8px 10px; min-height: 0; height: auto; white-space: normal; line-height: 1.3; }
+.style-card .t, .scenario-card .t { font-weight: 600; }
+.style-card .d { font-size: var(--fs-xs); color: var(--text-3); }
+.scenario-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--sp-2); }
+.scenario-card .d { font-size: var(--fs-sm); color: var(--text-3); }
+.scenario-card .row { gap: 6px; flex-wrap: wrap; }
+.scenario-detail { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: var(--sp-4); padding-top: var(--sp-2); border-top: 1px solid var(--border); }
+.scenario-detail h2 { margin-right: var(--sp-2); }
+.goal-list { display: flex; flex-direction: column; gap: 4px; padding-left: 18px; margin: 0; color: var(--text-2); }
+#start .field-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: var(--sp-2); align-items: center; }
+#start .field-row label { color: var(--text-2); font-size: var(--fs-sm); }
+#start .field-row input[type='text'] { width: 100%; min-width: 0; }
+@media (max-width: 760px) {
+  #start { padding: 0; }
+  .start-card { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); height: 100%; border-radius: 0; }
+  .start-nav { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--border); padding: var(--sp-2) var(--sp-3); align-items: center; }
+  .start-nav .brand { font-size: 20px; margin-right: var(--sp-2); }
+  .start-nav .tagline, .start-nav .spacer, .start-nav .foot { display: none; }
+  .start-main { min-height: 0; padding: var(--sp-3); }
+  .start-form, .scenario-detail { grid-template-columns: 1fr; }
+}

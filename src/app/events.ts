@@ -22,6 +22,8 @@ export interface EventMap {
   depart: number;
   /** contract offered / completed / failed */
   contract: { id: number; status: string };
+  /** the running scenario was decided */
+  scenario: { status: 'won' | 'failed' };
 }
 
 type Handler<T> = (payload: T) => void;

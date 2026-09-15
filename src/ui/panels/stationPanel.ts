@@ -4,6 +4,7 @@ import { tickToDay } from '../../core/time';
 import { CARGO, CARGO_COUNT } from '../../data/cargo';
 import { hopDistance, nextHop } from '../../sim/cargoRouting';
 import { pileCap, totalWaiting, totalWaitingAll } from '../../sim/station';
+import { demandQuoteAt, fmtFactor } from '../../sim/prices';
 import { badge, button, clear, emptyState, h, kpi, kpis, listRow, meter, section, sectionMeta, tabs } from '../dom';
 import { fmtInt, fmtMoney, fmtPct, fmtSpeed } from '../format';
 import { cargoIcon, cargoTag, uiIcon } from '../icons';
@@ -123,7 +124,12 @@ export function registerStationPanel(host: PanelHost): void {
             if (!st.seen[c]) continue;
             const waiting = totalWaiting(st, c);
             const piles = st.piles.filter((p) => p.cargo === c);
-            const dests = [...new Set(piles.map((p) => rt.stationById.get(p.dest)?.name ?? '?'))];
+            const dests = [...new Set(piles.map((p) => p.dest))].map((d) => {
+              const ds = rt.stationById.get(d);
+              if (!ds) return '?';
+              const f = demandQuoteAt(s, rt, ds, c).factor;
+              return Math.abs(f - 1) > 0.005 ? `${ds.name} (pays ${fmtFactor(f)})` : ds.name;
+            });
             const r = st.rating[c];
             const amount = piles.reduce((a, p) => a + p.amount, 0);
             const avgAge = amount > 0 ? piles.reduce((a, p) => a + p.amount * p.ageDays, 0) / amount : 0;

@@ -3,6 +3,7 @@ import { euclidT } from '../core/grid';
 import type { GameState, Id } from '../core/types';
 import { CARGO_COUNT, TOWN_ACCEPTS } from '../data/cargo';
 import { INDUSTRIES } from '../data/industries';
+import { demandQuoteAt } from './prices';
 
 /**
  * Rebuild the line network: BFS over the station graph (nodes = stations, edges = consecutive
@@ -102,11 +103,16 @@ export function hopDistance(rt: Runtime, from: Id, dest: Id): number {
 }
 
 /** Nearest reachable acceptor station for a freight cargo (fewest hops, then distance). Excludes `from`. */
+/**
+ * Where freight from `from` goes: the reachable acceptor whose receiver pays best (local prices);
+ * at equal price the one with the fewest transfers, then the nearest.
+ */
 export function chooseFreightDest(state: GameState, rt: Runtime, from: Id, cargo: number): Id {
   const w = state.world.width;
   const src = rt.stationById.get(from);
   if (!src) return -1;
   let best = -1;
+  let bestPrice = -Infinity;
   let bestHops = Infinity;
   let bestDist = Infinity;
   for (const id of rt.acceptors[cargo]) {
@@ -115,9 +121,12 @@ export function chooseFreightDest(state: GameState, rt: Runtime, from: Id, cargo
     if (hops < 1) continue;
     const st = rt.stationById.get(id);
     if (!st) continue;
+    const price = demandQuoteAt(state, rt, st, cargo).factor;
     const dist = euclidT(src.tile, st.tile, w);
-    if (hops < bestHops || (hops === bestHops && dist < bestDist)) {
+    const better = price > bestPrice + 0.005 || (Math.abs(price - bestPrice) <= 0.005 && (hops < bestHops || (hops === bestHops && dist < bestDist)));
+    if (better) {
       best = id;
+      bestPrice = price;
       bestHops = hops;
       bestDist = dist;
     }

@@ -35,6 +35,15 @@ export interface Town {
   /** per CargoId: units delivered to this town this month */
   deliveredMonth: number[];
   deliveredLastMonth: number[];
+  /** scenario flavour: fixed price modifiers (see sim/prices.ts) */
+  perks?: PricePerk[];
+}
+
+/** A named price modifier attached to a town or industry by a scenario. */
+export interface PricePerk {
+  cargo: number;
+  pct: number;
+  label: string;
 }
 
 export interface Industry {
@@ -56,6 +65,8 @@ export interface Industry {
   transportedLastMonth: number;
   monthsUnserved: number;
   lowServiceMonths: number;
+  /** scenario flavour: fixed price modifiers (see sim/prices.ts) */
+  perks?: PricePerk[];
 }
 
 export interface CargoPile {
@@ -277,4 +288,14 @@ export interface GameState {
   /** tutorial progress: index of the next hint to show, -1 = done */
   tutorialStep: number;
   contracts: Contract[];
+  /** the scenario this game was started from (null = free play) */
+  scenario: ScenarioState | null;
+}
+
+export interface ScenarioState {
+  /** id in data/scenarios.ts */
+  id: string;
+  status: 'active' | 'won' | 'failed';
+  /** game day the scenario was decided */
+  decidedDay?: number;
 }

@@ -27,8 +27,9 @@ describe('save codec', () => {
     delete st.tutorialStep;
     delete st.stats.trainsBought;
     const back = decodeState(JSON.stringify(file)).state;
-    expect(back.schema).toBe(5);
+    expect(back.schema).toBe(6);
     expect(back.contracts).toEqual([]);
+    expect(back.scenario).toBeNull();
     expect(back.notificationSeq).toBe(0);
     expect(back.world.track2.length).toBe(back.world.terrain.length);
     expect(back.economy.startMoney).toBe(500_000);

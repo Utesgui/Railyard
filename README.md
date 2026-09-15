@@ -31,7 +31,7 @@ locomotive with matching wagons. A short tutorial walks you through it on a new 
 | Arrows, wheel, right-drag | Pan, zoom, pan |
 | Middle-click | Add a waypoint while laying track |
 | U | Double-track tool: click a segment to add a second track |
-| C | Contracts |
+| C / W / G / A | Contracts / World / Goals / Alerts |
 | H | Toggle station coverage overlay |
 | Esc | Cancel tool / close panel / close dialog |
 | Ctrl+S / Ctrl+L | Quick save / quick load |
@@ -48,7 +48,14 @@ locomotive with matching wagons. A short tutorial walks you through it on a new 
   add platforms, passing loops or upgrade busy segments to double track (one lane per direction).
 - **Contracts**: periodic offers to deliver a fixed amount of cargo to a town or industry before a
   deadline, with a bonus on success and a penalty on failure.
-- **Maps**: four sizes from 64×48 to 176×120 tiles; towns and industries scale with the area.
+- **Local prices**: every plant and town pays and sells at its own rate, for reasons you can read
+  off the map (rich deposits, crowded markets, distance to suppliers, town size, river access).
+  Cargo flows to the best-paying reachable buyer. See `docs/ECONOMY.md`.
+- **Maps**: four sizes from 64×48 to 176×120 tiles and six world styles (classic, plains,
+  highlands, archipelago, ridge, valley); towns and industries scale with the area.
+- **Scenarios**: nine maps with objectives, from a gentle start to hard times with a deadline,
+  including a hand-drawn map of the Passau district. The start page (first visit, or the main
+  menu later) sets up new games with a live preview. See `docs/SCENARIOS.md`.
 - **Eras**: steam (1900), diesel (1935), electric (1965) locomotives with different speed, power and cost.
 - **Progress**: yearly report, achievements, 12-month profit charts per line and train, cash history,
   station traffic statistics, loaded-performance rating in the depot, synthesized sound effects,

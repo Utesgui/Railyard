@@ -11,10 +11,11 @@ import { registerStationPanel } from './panels/stationPanel';
 import { registerSystemPanels } from './panels/systemPanels';
 import { registerContractsPanel } from './panels/contractsPanel';
 import { registerWorldPanel } from './panels/worldPanel';
+import { registerGoalsPanel } from './panels/goalsPanel';
 import { registerTrainPanels } from './panels/trainPanel';
 import { createTools } from './tools';
 import type { SelectionKind } from './uiState';
-import { closeDialog, initDialogs, isDialogOpen, showAchievements, showGameOver, showHelp, showYearSummary } from './dialogs';
+import { closeDialog, initDialogs, isDialogOpen, showAchievements, showGameOver, showHelp, showScenarioResult, showYearSummary } from './dialogs';
 import { createContextBar } from './context';
 import { applyUiScale, currentUiScale } from './scale';
 import { getSetting } from '../save/storage';
@@ -22,6 +23,7 @@ import { sfx } from './sfx';
 import { fmtInt, fmtMoney } from './format';
 import { CARGO, CARGO_COUNT } from '../data/cargo';
 import { totalWaiting } from '../sim/station';
+import { industryPriceEntries, priceSummary, townPriceEntries } from './panels/priceUi';
 
 const ENTITY_PANELS: SelectionKind[] = ['station', 'line', 'train', 'industry', 'town'];
 
@@ -45,9 +47,10 @@ export class UI {
     registerEntityPanels(this.panels);
     registerLinePanels(this.panels);
     registerTrainPanels(this.panels);
-    registerSystemPanels(this.panels);
+    registerSystemPanels(this.panels, { openMenu: () => this.openMenu() });
     registerContractsPanel(this.panels);
     registerWorldPanel(this.panels);
+    registerGoalsPanel(this.panels, { openMenu: () => this.openMenu() });
 
     this.topbar = createTopbar(game, this.panels);
     document.getElementById('topbar')!.appendChild(this.topbar.el);
@@ -89,7 +92,8 @@ export class UI {
       // at high speed the modal report interrupts every ~45 s of real time; the alert (with Report) stays
       if (mode === 'always' || (mode === 'slow' && game.state.speed <= 2)) showYearSummary(game);
     });
-    game.events.on('gameOver', () => showGameOver(game, () => this.panels.open('settings')));
+    game.events.on('gameOver', () => showGameOver(game, () => this.openMenu()));
+    game.events.on('scenario', (e) => showScenarioResult(game, e.status, () => this.openMenu()));
 
     // sounds: start the audio context on the first gesture, then react to game events
     const arm = () => sfx.ensure();
@@ -161,6 +165,9 @@ export class UI {
     this.panels.open(sel.kind, sel.id);
   }
 
+  /** Opens the main menu (start page); installed by main.ts. Falls back to the settings panel. */
+  openMenu: () => void = () => this.panels.open('settings');
+
   private showTooltip(tile: number, sx: number, sy: number): void {
     const g = this.game;
     if (tile < 0 || g.ui.tool !== 'inspect' || g.ui.hoverTile < 0) {
@@ -184,8 +191,17 @@ export class UI {
         if (parts.length) text += ` · waiting: ${parts.slice(0, 4).join(', ')}${parts.length > 4 ? ` +${parts.length - 4}` : ''}`;
       }
     }
-    else if (ind >= 0) text = `${rt.industryById.get(ind)?.name}`;
-    else if (town >= 0) text = `${rt.townById.get(town)?.name}`;
+    else if (ind >= 0) {
+      const o = rt.industryById.get(ind);
+      text = o ? o.name : '';
+      const p = o ? priceSummary(industryPriceEntries(g, o)) : '';
+      if (p) text += ` · ${p}`;
+    } else if (town >= 0) {
+      const o = rt.townById.get(town);
+      text = o ? `${o.name} · ${fmtInt(o.population)} inhabitants` : '';
+      const p = o ? priceSummary(townPriceEntries(g, o)) : '';
+      if (p) text += ` · ${p}`;
+    }
     else text = TERRAIN_NAMES[g.state.world.terrain[tile]];
     this.tooltip.textContent = text;
     this.tooltip.hidden = false;
@@ -267,6 +283,9 @@ export class UI {
         return true;
       case 'w':
         togglePanel('world');
+        return true;
+      case 'g':
+        togglePanel('goals');
         return true;
       case 'a':
         togglePanel('alerts');

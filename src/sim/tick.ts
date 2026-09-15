@@ -8,6 +8,7 @@ import { totalMaintenance } from '../track/graph';
 import { ledgerTotalRevenue, ledgerNet, rollLedger, spend } from './economy';
 import { newVehiclesIn } from './eras';
 import { checkAchievements } from './achievements';
+import { checkGoals } from './goals';
 import { monthEndContracts } from './contracts';
 import { monthEndIndustries, type IndustryEvent } from './industry';
 import { notify } from './notify';
@@ -78,6 +79,8 @@ export function monthEnd(state: GameState, rt: Runtime, ev: Events | null): void
     st.deliveredMonth = new Array(st.deliveredMonth.length).fill(0);
   }
   const indEvents: IndustryEvent[] = [];
+  // towns grew and industries changed: local price quotes are recomputed on demand
+  rt.prices.clear();
   monthEndIndustries(state, indEvents);
   for (const e of indEvents) {
     const tile = e.ind.y * state.world.width + e.ind.x;
@@ -90,6 +93,7 @@ export function monthEnd(state: GameState, rt: Runtime, ev: Events | null): void
 
   monthEndContracts(state, rt, ev);
   checkAchievements(state, rt, ev);
+  checkGoals(state, rt, ev);
   state.economy.cashHistory.unshift(Math.round(state.economy.money));
   if (state.economy.cashHistory.length > 120) state.economy.cashHistory.length = 120;
 
