@@ -1,7 +1,9 @@
 import { SAVE_SCHEMA } from '../core/constants';
+import { CARGO_COUNT as REAL_CARGO_COUNT } from '../data/cargo';
 
 type Migration = (raw: Record<string, unknown>) => Record<string, unknown>;
 
+/** cargo count of the schema-1 era, used by the old migrations; the 6 -> 7 step pads to the real count */
 const CARGO_COUNT = 12;
 const zeros = () => new Array(CARGO_COUNT).fill(0);
 
@@ -64,6 +66,33 @@ const MIGRATIONS: Record<number, Migration> = {
   // 5 -> 6: scenarios (free play has none)
   5: (raw) => {
     (raw as { scenario?: unknown }).scenario ??= null;
+    return raw;
+  },
+  // 6 -> 7: a 13th cargo (graphite): every per-cargo array grows to the current count
+  6: (raw) => {
+    const r = raw as {
+      stations: Record<string, unknown>[];
+      towns: Record<string, unknown>[];
+      lines: Record<string, unknown>[];
+      economy: { ledger: Record<string, unknown>[] };
+      stats: { byCargo?: number[] };
+    };
+    const pad = (obj: Record<string, unknown>, key: string, fill: unknown) => {
+      const arr = obj[key];
+      if (!Array.isArray(arr)) return;
+      while (arr.length < REAL_CARGO_COUNT) arr.push(fill);
+    };
+    for (const st of r.stations) {
+      pad(st, 'rating', 0.5);
+      pad(st, 'lastPickupDay', -1);
+      pad(st, 'lastPickupSpeed', 0);
+      pad(st, 'seen', false);
+      for (const k of ['pickedUpMonth', 'pickedUpLastMonth', 'deliveredMonth', 'deliveredLastMonth']) pad(st, k, 0);
+    }
+    for (const t of r.towns) for (const k of ['deliveredMonth', 'deliveredLastMonth']) pad(t, k, 0);
+    for (const l of r.lines) for (const k of ['cargoMonth', 'cargoLastMonth']) pad(l, k, 0);
+    for (const m of r.economy.ledger) pad(m, 'revenue', 0);
+    if (r.stats.byCargo) while (r.stats.byCargo.length < REAL_CARGO_COUNT) r.stats.byCargo.push(0);
     return raw;
   },
 };

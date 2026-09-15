@@ -38,10 +38,11 @@ describe('generateWorld', () => {
         for (const t of s.towns[i].tiles) expect(s.world.terrain[t]).not.toBe(Terrain.Water);
       }
       const kinds = new Set(s.industries.map((i) => i.type));
-      for (const type of INDUSTRIES) expect(kinds.has(type.id), `seed ${seed} missing ${type.name}`).toBe(true);
+      // scenario-only types (count 0) are not expected on generated maps
+      for (const type of INDUSTRIES) if (type.count[1] > 0) expect(kinds.has(type.id), `seed ${seed} missing ${type.name}`).toBe(true);
       // every processor input has a raw producer on the map
       for (const type of INDUSTRIES) {
-        if (isRawIndustry(type)) continue;
+        if (isRawIndustry(type) || type.count[1] === 0) continue;
         for (const c of type.inputs) expect(s.industries.some((i) => INDUSTRIES[i.type].outputs.includes(c))).toBe(true);
       }
       // industries do not overlap towns or each other
@@ -65,7 +66,7 @@ describe('generateWorld', () => {
     expect(small.towns.length).toBeGreaterThanOrEqual(4);
     expect(huge.towns.length).toBeGreaterThan(small.towns.length * 2);
     expect(huge.industries.length).toBeGreaterThan(small.industries.length * 2);
-    for (const type of INDUSTRIES) expect(small.industries.some((i) => i.type === type.id)).toBe(true);
+    for (const type of INDUSTRIES) if (type.count[1] > 0) expect(small.industries.some((i) => i.type === type.id)).toBe(true);
   });
 
   it('has a reasonable terrain mix', () => {

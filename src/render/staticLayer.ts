@@ -271,11 +271,83 @@ function drawIndustry(g: CanvasRenderingContext2D, px: number, py: number, color
     case 8:
       drawOilWell(g);
       break;
+    case 10:
+      drawGraphiteMine(g);
+      break;
+    case 11:
+      drawPort(g);
+      break;
     default:
       drawRefinery(g);
       break;
   }
   g.restore();
+}
+
+function drawGraphiteMine(g: CanvasRenderingContext2D): void {
+  // adit into a rock face with rails and ore carts of dark, glittering graphite
+  rect(g, 6, 12, 52, 26, '#6d6f74');
+  rect(g, 6, 12, 52, 6, 'rgba(255,255,255,0.12)');
+  g.fillStyle = '#1e2126';
+  g.beginPath();
+  g.arc(32, 38, 9, Math.PI, 0);
+  g.lineTo(41, 38);
+  g.lineTo(23, 38);
+  g.closePath();
+  g.fill();
+  rect(g, 21, 26, 3, 12, '#5a3a1e');
+  rect(g, 40, 26, 3, 12, '#5a3a1e');
+  rect(g, 21, 25, 22, 3, '#5a3a1e');
+  // rails out of the adit
+  rect(g, 27, 38, 2, 18, '#3a3a3a');
+  rect(g, 35, 38, 2, 18, '#3a3a3a');
+  for (let i = 0; i < 4; i++) rect(g, 25, 41 + i * 4, 14, 1.5, '#5a4a3a');
+  // carts
+  rect(g, 8, 46, 12, 8, '#4a4f58');
+  rect(g, 9, 43, 10, 4, '#2b3038');
+  rect(g, 44, 46, 12, 8, '#4a4f58');
+  rect(g, 45, 43, 10, 4, '#2b3038');
+  g.fillStyle = 'rgba(255,255,255,0.5)';
+  g.fillRect(11, 44, 1.5, 1.5);
+  g.fillRect(15, 45, 1.5, 1.5);
+  g.fillRect(48, 44, 1.5, 1.5);
+  g.fillRect(52, 45, 1.5, 1.5);
+}
+
+function drawPort(g: CanvasRenderingContext2D): void {
+  // quay with a gantry crane, a warehouse and stockpiles waiting for the barge
+  rect(g, 4, 40, 56, 16, '#8d8a80');
+  rect(g, 4, 40, 56, 2, LIGHT);
+  for (let i = 0; i < 6; i++) rect(g, 8 + i * 9, 54, 3, 4, '#3a3a3a');
+  // warehouse
+  rect(g, 8, 20, 22, 18, '#b9b0a0');
+  tri(g, 6, 20, 32, 20, 19, 10, '#7a4a3a');
+  rect(g, 12, 28, 6, 10, '#4a4a4a');
+  // crane
+  g.strokeStyle = '#c9a227';
+  g.lineWidth = 3;
+  g.beginPath();
+  g.moveTo(44, 40);
+  g.lineTo(44, 10);
+  g.lineTo(60, 18);
+  g.moveTo(44, 22);
+  g.lineTo(34, 30);
+  g.stroke();
+  g.strokeStyle = '#3a3a3a';
+  g.lineWidth = 1.2;
+  g.beginPath();
+  g.moveTo(56, 16);
+  g.lineTo(56, 32);
+  g.stroke();
+  rect(g, 53, 32, 6, 5, '#4a4f58');
+  // stockpiles
+  tri(g, 30, 40, 42, 40, 36, 32, '#3c434d');
+  tri(g, 12, 40, 22, 40, 17, 34, '#2b2b2b');
+  rect(g, 38, 46, 10, 6, '#1e1e2e');
+  g.fillStyle = '#9aa5b1';
+  g.beginPath();
+  g.ellipse(43, 46, 5, 1.6, 0, 0, Math.PI * 2);
+  g.fill();
 }
 
 const DARK = 'rgba(0,0,0,0.45)';

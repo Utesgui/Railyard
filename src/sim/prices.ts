@@ -128,7 +128,8 @@ function computeSupply(state: GameState, ind: Industry, cargo: number): PriceQuo
   if (isRawIndustry(type)) {
     switch (type.id) {
       case IndustryKind.CoalMine:
-      case IndustryKind.IronMine: {
+      case IndustryKind.IronMine:
+      case IndustryKind.GraphiteMine: {
         const rock = around(isHilly);
         if (rock >= 20) mods.push({ label: 'Rich deposit (mountain seam)', pct: 12 });
         else if (rock >= 10) mods.push({ label: 'Good deposit (hill seam)', pct: 6 });

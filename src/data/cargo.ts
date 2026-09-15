@@ -30,6 +30,7 @@ export const Cargo = {
   Goods: 9,
   Food: 10,
   Fuel: 11,
+  Graphite: 12,
 } as const;
 
 export const CARGO: readonly CargoType[] = [
@@ -45,6 +46,7 @@ export const CARGO: readonly CargoType[] = [
   { id: 9, key: 'goods', name: 'Goods', cls: 'goods', baseValue: 2.6, transitDays: 40, massPerUnit: 0.5, patienceDays: 0, color: '#c65d7b', unit: 'crates' },
   { id: 10, key: 'food', name: 'Food', cls: 'goods', baseValue: 2.0, transitDays: 30, massPerUnit: 0.6, patienceDays: 0, color: '#7bc96f', unit: 't' },
   { id: 11, key: 'fuel', name: 'Fuel', cls: 'liquid', baseValue: 2.2, transitDays: 45, massPerUnit: 0.9, patienceDays: 0, color: '#6c5ce7', unit: 'kl' },
+  { id: 12, key: 'graphite', name: 'Graphite', cls: 'bulk', baseValue: 1.9, transitDays: 90, massPerUnit: 1.0, patienceDays: 0, color: '#5b6470', unit: 't' },
 ];
 
 export const CARGO_COUNT = CARGO.length;

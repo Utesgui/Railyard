@@ -29,6 +29,8 @@ export const IndustryKind = {
   FoodPlant: 7,
   OilWell: 8,
   Refinery: 9,
+  GraphiteMine: 10,
+  RiverPort: 11,
 } as const;
 
 export const INDUSTRIES: readonly IndustryType[] = [
@@ -42,10 +44,18 @@ export const INDUSTRIES: readonly IndustryType[] = [
   { id: 7, key: 'foodPlant', name: 'Food Plant', inputs: [Cargo.Grain], outputs: [Cargo.Food], baseProduction: 0, outputPerInput: 1.0, placement: 'nearTown', color: '#4f9a4a', count: [1, 1] },
   { id: 8, key: 'oilWell', name: 'Oil Well', inputs: [], outputs: [Cargo.Oil], baseProduction: 90, outputPerInput: 0, placement: 'grass', color: '#1c1c2c', count: [1, 2] },
   { id: 9, key: 'refinery', name: 'Refinery', inputs: [Cargo.Oil], outputs: [Cargo.Fuel], baseProduction: 0, outputPerInput: 0.9, placement: 'nearTown', color: '#4a3f8f', count: [1, 1] },
+  // scenario-only types (count 0 on generated maps): a graphite mine and a river port that exports bulk cargo by barge
+  { id: 10, key: 'graphiteMine', name: 'Graphite Mine', inputs: [], outputs: [Cargo.Graphite], baseProduction: 70, outputPerInput: 0, placement: 'hills', color: '#3c434d', count: [0, 0] },
+  { id: 11, key: 'riverPort', name: 'River Port', inputs: [Cargo.Graphite, Cargo.Coal, Cargo.IronOre, Cargo.Oil], outputs: [], baseProduction: 0, outputPerInput: 0, placement: 'nearTown', color: '#2f5d7a', count: [0, 0] },
 ];
 
 export function isRawIndustry(type: IndustryType): boolean {
   return type.inputs.length === 0;
+}
+
+/** Takes cargo without producing anything (a port that ships it out of the map). */
+export function isExporter(type: IndustryType): boolean {
+  return type.inputs.length > 0 && type.outputs.length === 0;
 }
 
 /** Industry types that consume a cargo. */

@@ -15,6 +15,7 @@ const GLYPHS: Record<number, string> = {
   [Cargo.Goods]: '<rect x="2" y="3" width="12" height="11" rx="1"/><path d="M2 8.5h12M8 3v11" fill="none" stroke="#1b1d22" stroke-width="1.2"/>',
   [Cargo.Food]: '<path d="M8 4.6c-2.8-1.6-5.6.4-5.6 4 0 3 2 6 3.7 6 .7 0 1.2-.4 1.9-.4s1.2.4 1.9.4c1.7 0 3.7-3 3.7-6 0-3.6-2.8-5.6-5.6-4z"/><path d="M8 4.6c0-1.6 1-2.6 2.3-2.9" fill="none" stroke="#5fbf4f" stroke-width="1.4"/>',
   [Cargo.Fuel]: '<path d="M3 4h7l3 2v9H3z"/><rect x="5" y="1.5" width="3" height="2.5"/><rect x="5" y="8" width="5" height="4" fill="#1b1d22" opacity=".45"/>',
+  [Cargo.Graphite]: '<path d="M2.2 10.6l2.6-6 5.4-2 3.6 3.4-1.6 6.2-5.8 1.4z"/><path d="M5 8.4l3.2-1.2M6.2 11l3.8-1.6" fill="none" stroke="#fff" stroke-width=".9" opacity=".55"/>',
 };
 
 const cache = new Map<string, string>();

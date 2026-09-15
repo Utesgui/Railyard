@@ -5,6 +5,7 @@ import type { Camera } from './camera';
 import { drawTrains, type Floaters } from './dynamicLayer';
 import { drawOverlay } from './overlayLayer';
 import { drawWaitingCargo } from './cargoLayer';
+import { drawShips } from './shipLayer';
 import { StaticLayer } from './staticLayer';
 import { drawTracks } from './trackLayer';
 
@@ -41,6 +42,7 @@ export class Renderer {
     this.staticLayer.draw(ctx, this.cam, state, rt);
     drawTracks(ctx, this.cam, state, rt);
     drawTrains(ctx, this.cam, state, rt, alpha, ui.selection.kind === 'train' ? ui.selection.id : -1);
+    drawShips(ctx, this.cam, state, alpha);
     this.cam.apply(ctx);
     drawWaitingCargo(ctx, this.cam, state, rt, ui.showCargo);
     drawOverlay(ctx, this.cam, state, rt, ui);

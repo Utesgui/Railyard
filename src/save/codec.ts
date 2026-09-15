@@ -1,4 +1,5 @@
 import { SAVE_SCHEMA } from '../core/constants';
+import { CARGO_COUNT } from '../data/cargo';
 import type { GameState } from '../core/types';
 import { migrate } from './migrations';
 
@@ -48,6 +49,6 @@ export function decodeState(json: string): { state: GameState; name: string; sav
   const state = { ...raw, world: { ...world, terrain, track, track2 } } as unknown as GameState;
   state.schema = SAVE_SCHEMA;
   // defaults for fields added within the current schema
-  (state.stats as { byCargo?: number[] }).byCargo ??= new Array(12).fill(0);
+  (state.stats as { byCargo?: number[] }).byCargo ??= new Array(CARGO_COUNT).fill(0);
   return { state, name: file.name ?? 'save', savedAt: file.savedAt ?? '' };
 }

@@ -41,6 +41,16 @@ export interface DrawnIndustry {
   level?: number;
 }
 
+/** A decorative vessel shuttling along a polyline of water tiles (positions derive from game time). */
+export interface ShipRoute {
+  name?: string;
+  points: readonly Point[];
+  /** tiles per game day (default 6) */
+  speed?: number;
+  /** days spent at each end before turning (default 10) */
+  dwellDays?: number;
+}
+
 export interface DrawnMap {
   width: number;
   height: number;
@@ -49,6 +59,7 @@ export interface DrawnMap {
   features: readonly DrawnFeature[];
   towns: readonly DrawnTown[];
   industries: readonly DrawnIndustry[];
+  ships?: readonly ShipRoute[];
 }
 
 const TERRAIN_ID: Record<TerrainName, number> = { water: Terrain.Water, grass: Terrain.Grass, forest: Terrain.Forest, hills: Terrain.Hills, mountain: Terrain.Mountain };

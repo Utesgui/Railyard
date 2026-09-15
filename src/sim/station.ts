@@ -21,7 +21,7 @@ export function totalWaitingAll(station: Station): number {
 }
 
 /** Add cargo to the station, merging into the (cargo, dest) pile and respecting the cap. Returns the amount accepted. */
-export function addToPile(station: Station, cargo: number, dest: number, amount: number, ageDays = 0): number {
+export function addToPile(station: Station, cargo: number, dest: number, amount: number, ageDays = 0, supply = 1): number {
   if (amount <= 0 || dest < 0) return 0;
   const cap = pileCap(station);
   const room = Math.max(0, cap - totalWaiting(station, cargo));
@@ -30,12 +30,15 @@ export function addToPile(station: Station, cargo: number, dest: number, amount:
   station.seen[cargo] = true;
   for (const p of station.piles) {
     if (p.cargo === cargo && p.dest === dest) {
-      p.ageDays = (p.ageDays * p.amount + ageDays * add) / (p.amount + add);
+      const total = p.amount + add;
+      p.ageDays = (p.ageDays * p.amount + ageDays * add) / total;
+      // the producer's premium travels with the cargo: merge as a weighted average
+      p.supply = ((p.supply ?? 1) * p.amount + supply * add) / total;
       p.amount += add;
       return add;
     }
   }
-  station.piles.push({ cargo, dest, amount: add, ageDays });
+  station.piles.push({ cargo, dest, amount: add, ageDays, supply });
   return add;
 }
 

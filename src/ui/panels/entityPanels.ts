@@ -1,6 +1,6 @@
 import type { Game } from '../../app/Game';
 import { CARGO, Cargo, TOWN_ACCEPTS } from '../../data/cargo';
-import { INDUSTRIES, isRawIndustry } from '../../data/industries';
+import { INDUSTRIES, isExporter, isRawIndustry } from '../../data/industries';
 import { monthlyProduction } from '../../sim/industry';
 import { badge, button, clear, emptyState, h, kpi, kpis, kv, kvGrid, listRow, meter, section, sectionMeta } from '../dom';
 import { fmtInt, fmtPct } from '../format';
@@ -16,6 +16,7 @@ export function registerEntityPanels(host: PanelHost): void {
     if (!ind) return { el: host.frame(host.header('Industry'), host.body(emptyState('This industry no longer exists.'))), update() {} };
     const type = INDUSTRIES[ind.type];
     const raw = isRawIndustry(type);
+    const exporter = isExporter(type);
     const w = game.state.world.width;
     const statusWrap = h('div', { className: 'status' });
     const kpiWrap = h('div');
@@ -29,11 +30,11 @@ export function registerEntityPanels(host: PanelHost): void {
       host.body(
         statusWrap,
         kpiWrap,
-        section('Chain', type.inputs.length ? h('div', { className: 'row' }, h('span', { className: 'muted' }, t('consumes')), ...type.inputs.map(cargoTag)) : null, h('div', { className: 'row' }, h('span', { className: 'muted' }, t('produces')), ...type.outputs.map(cargoTag))),
+        section('Chain', type.inputs.length ? h('div', { className: 'row' }, h('span', { className: 'muted' }, exporter ? 'Exports' : t('consumes')), ...type.inputs.map(cargoTag)) : null, type.outputs.length ? h('div', { className: 'row' }, h('span', { className: 'muted' }, t('produces')), ...type.outputs.map(cargoTag)) : h('div', { className: 'hint' }, 'Delivered cargo is loaded on barges and leaves the map; nothing comes back.')),
         section('Production', prodWrap),
         sectionMeta('Local prices', 'of the base value', priceWrap, h('div', { className: 'hint' }, 'What this plant pays for deliveries and what its output sells for. Hover a row for the reasons; they come from the map and are refreshed monthly.')),
         section('Stations in range', stations),
-        h('div', { className: 'hint' }, raw ? 'Move at least 60% of the output regularly and production grows a level (max 8). Poor service for a year shrinks it.' : 'Deliver the inputs by train; each unit is converted into output that appears at stations in range.'),
+        h('div', { className: 'hint' }, raw ? 'Move at least 60% of the output regularly and production grows a level (max 8). Poor service for a year shrinks it.' : exporter ? 'Deliver bulk cargo by train; the port ships it downriver and pays the export price.' : 'Deliver the inputs by train; each unit is converted into output that appears at stations in range.'),
       ),
     );
     let stKey = '\0';
@@ -82,9 +83,9 @@ export function registerEntityPanels(host: PanelHost): void {
         clear(kpiWrap);
         kpiWrap.appendChild(
           kpis(
-            kpi(t('level'), `${ind.level} / 8`, { sub: raw ? `${fmtInt(monthlyProduction(ind))} units / month` : 'processing plant' }),
-            kpi(t('produced'), fmtInt(ind.producedLastMonth), { sub: 'last month' }),
-            kpi('To stations', fmtInt(ind.transportedLastMonth), { sub: 'last month' }),
+            kpi(t('level'), `${ind.level} / 8`, { sub: raw ? `${fmtInt(monthlyProduction(ind))} units / month` : exporter ? 'export terminal' : 'processing plant' }),
+            kpi(exporter ? 'Exported' : t('produced'), fmtInt(ind.producedLastMonth), { sub: 'last month' }),
+            exporter ? kpi('Shipped out', fmtInt(ind.transportedLastMonth), { sub: 'last month, by barge' }) : kpi('To stations', fmtInt(ind.transportedLastMonth), { sub: 'last month' }),
           ),
         );
       }
@@ -92,16 +93,18 @@ export function registerEntityPanels(host: PanelHost): void {
       if (pk !== prodKey) {
         prodKey = pk;
         clear(prodWrap);
+        const produced = exporter ? 'Exported' : t('produced');
+        const moved = exporter ? 'Shipped out' : 'To stations';
         prodWrap.appendChild(
           kvGrid(
-            kv(`${t('produced')} (${t('thisMonth').toLowerCase()})`, fmtInt(ind.producedMonth)),
-            kv(`To stations (${t('thisMonth').toLowerCase()})`, fmtInt(ind.transportedMonth)),
-            kv(`${t('produced')} (${t('lastMonth').toLowerCase()})`, fmtInt(ind.producedLastMonth)),
-            kv(`To stations (${t('lastMonth').toLowerCase()})`, fmtInt(ind.transportedLastMonth)),
-            ...type.inputs.map((c, j) => kv(`${CARGO[c].name} in stock`, fmtInt(ind.inputStock[j]))),
+            kv(`${produced} (${t('thisMonth').toLowerCase()})`, fmtInt(ind.producedMonth)),
+            kv(`${moved} (${t('thisMonth').toLowerCase()})`, fmtInt(ind.transportedMonth)),
+            kv(`${produced} (${t('lastMonth').toLowerCase()})`, fmtInt(ind.producedLastMonth)),
+            kv(`${moved} (${t('lastMonth').toLowerCase()})`, fmtInt(ind.transportedLastMonth)),
+            ...type.inputs.map((c, j) => kv(`${CARGO[c].name} ${exporter ? 'on the quay' : 'in stock'}`, fmtInt(ind.inputStock[j]))),
           ),
         );
-        prodWrap.appendChild(h('div', { className: 'hint' }, '"To stations" counts units that went into the piles of stations in range; it is limited by station capacity and ratings.'));
+        prodWrap.appendChild(h('div', { className: 'hint' }, exporter ? 'Delivered cargo waits on the quay and leaves with the next barge; the port pays on delivery.' : '"To stations" counts units that went into the piles of stations in range; it is limited by station capacity and ratings.'));
       }
       const k = list.map((x) => `${x.id}${x.name}${rt.served.has(x.id)}`).join(',');
       if (k !== stKey) {

@@ -75,6 +75,8 @@ export interface CargoPile {
   amount: number;
   /** weighted average age in days */
   ageDays: number;
+  /** weighted average supply premium of the producers (sim/prices.ts); absent = 1 */
+  supply?: number;
 }
 
 export interface Station {
@@ -136,6 +138,8 @@ export interface Wagon {
   loadedDay: number;
   /** station tile where loaded (distance for revenue) */
   originTile: number;
+  /** supply premium carried from the producer through transfers; absent = 1 */
+  supply?: number;
 }
 
 export const TrainState = { Moving: 0, Dwelling: 1, NoRoute: 2, Stopped: 3, Broken: 4, WaitDepart: 5 } as const;

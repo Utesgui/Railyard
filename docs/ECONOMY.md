@@ -26,7 +26,7 @@ Before this change every steel mill paid the same for coal and every mine's coal
 price = supply(origin station, cargo) × demand(destination station, cargo)
 ```
 
-`supply` is the best premium among the producers of that cargo in the loading station's catchment; `demand` is the price of the receiver that actually takes the cargo at the unloading station (the first accepting industry in the catchment, else the town). Passengers and mail have no supply premium; towns only apply perks to them.
+`supply` is the premium of the industry that produced the load. It is written into the station pile when the cargo appears (piles merge it as a weighted average), copied onto the wagon when loaded and handed on at every transfer, so a hub network earns the same premium as a direct line. `demand` is the price of the receiver that actually takes the cargo at the unloading station (the first accepting industry in the catchment, else the town). Passengers and mail have no supply premium; towns only apply perks to them.
 
 The reasons are visible everywhere the price matters: the industry and town panels list every modifier (hover a row for the full text), the map tooltip summarises them ("Sawmill · pays for logs 113 % · sells planks 100 %") and station cargo rows show what the destination pays ("to Whitby Mill (pays 112 %)").
 
@@ -34,7 +34,7 @@ The reasons are visible everywhere the price matters: the industry and town pane
 
 | Producer | Modifier | Effect |
 | --- | --- | --- |
-| Coal / iron mine | ≥ 20 hill or mountain tiles within 3 → *Rich deposit*; ≥ 10 → *Good deposit*; < 5 → *Shallow deposit* | +12 % / +6 % / −5 % |
+| Coal / iron / graphite mine | ≥ 20 hill or mountain tiles within 3 → *Rich deposit*; ≥ 10 → *Good deposit*; < 5 → *Shallow deposit* | +12 % / +6 % / −5 % |
 | Forest | ≥ 22 forest tiles within 3 → *Old-growth forest*; ≥ 12 → *Dense forest*; < 8 → *Thin forest* | +10 % / +5 % / −6 % |
 | Farm | ≥ 30 grass tiles → *Fertile plain*; ≥ 20 → *Good soil*; ≥ 2 water tiles → *River water*; ≥ 12 hill tiles → *Stony ground* | +10 % / +4 % / +4 % / −6 % |
 | Oil well | ≥ 8 hill tiles → *Deep field*; ≥ 3 water tiles → *Shore field* | +8 % / +4 % |
@@ -51,7 +51,7 @@ The reasons are visible everywhere the price matters: the industry and town pane
 | Industry | ≥ 2 water tiles within 2 → *River access (barges compete)*; ≥ 10 hill tiles within 3 → *Hill site* | −5 % / +5 % |
 | Town (planks, goods, food, fuel) | population ≥ 2,500 → *Big market*; ≥ 1,200 → *Town market*; < 500 → *Village market* | +10 % / +4 % / −6 % |
 | Town | nearest other town ≥ 18 tiles → *Remote town*; ≥ 3 water tiles within 3 → *River town* | +8 % / −4 % |
-| Scenario perks | e.g. *Thermal spa* (+20 % passengers) in Bad Füssing | as defined |
+| Scenario perks | e.g. *Thermal spa* (+20 % passengers) in Bad Füssing, *Export terminal* (+10 %) at Bayernhafen Passau | as defined |
 
 Factors depend only on the map and the town populations, so they are the same for every player on a seed, need no save field and change slowly. They are cached on the runtime and refreshed at every month end (towns grow).
 
@@ -62,3 +62,7 @@ An industry's output goes to the reachable acceptor whose receiver **pays best**
 ### Balance
 
 The average multiplier over a generated map is close to 1: most producers carry one or two small bonuses, crowded areas carry a malus, and remote plants pay the most. Old saves work unchanged; their revenue simply starts to vary by ±10–30 % per route from the next delivery on.
+
+## Exporters
+
+A river port is an industry with inputs and no outputs: delivered cargo is loaded on barges and leaves the map. It pays the demand price like any plant (plus its perks), counts what it ships as produced and moved, and needs nothing in return. Graphite (13th cargo, bulk, $1.9 per unit and tile) exists only where a scenario places a graphite mine; the *Everything moves* achievement counts the cargo kinds present on the map.

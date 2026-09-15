@@ -9,6 +9,7 @@ import { INDUSTRIES, IndustryKind } from '../data/industries';
 import { generateWorld } from '../world/gen/generate';
 import { chooseFreightDest } from './cargoRouting';
 import { deliveryRevenue } from './economy';
+import { addToPile } from './station';
 import { demandQuoteAt, industryDemandQuote, priceMultiplier, supplyQuote, townDemandQuote } from './prices';
 
 function world(seed = 4242): { state: GameState; rt: ReturnType<typeof createRuntime>; cmd: Commands } {
@@ -150,5 +151,26 @@ describe('local prices', () => {
     const stMine = rt2.stationById.get(sMine.id!)!;
     const mult = priceMultiplier(state, rt2, stMine, stA, Cargo.Coal);
     expect(mult).toBeCloseTo(supplyQuote(state, rt2, mine, Cargo.Coal).factor * demandQuoteAt(state, rt2, stA, Cargo.Coal).factor, 6);
+  });
+});
+
+describe('supply premium through transfers', () => {
+  it('piles merge the premium as a weighted average and wagons carry it on', () => {
+    const { state, rt } = world();
+    const st = state.stations.length ? state.stations[0] : null;
+    void rt;
+    expect(st).toBeNull();
+    // a synthetic station: two batches with different premiums merge by amount
+    const station = { id: 1, name: 'x', tile: 0, platforms: 2, piles: [], rating: new Array(13).fill(0.5), lastPickupDay: [], lastPickupSpeed: [], seen: new Array(13).fill(false), builtDay: 0, pickedUpMonth: new Array(13).fill(0), pickedUpLastMonth: new Array(13).fill(0), deliveredMonth: new Array(13).fill(0), deliveredLastMonth: new Array(13).fill(0) };
+    const stTyped = station as unknown as Parameters<typeof addToPile>[0];
+    addToPile(stTyped, Cargo.Coal, 5, 100, 0, 1.2);
+    addToPile(stTyped, Cargo.Coal, 5, 100, 0, 1.0);
+    expect(stTyped.piles.length).toBe(1);
+    expect(stTyped.piles[0].supply).toBeCloseTo(1.1, 6);
+    // a batch to another destination keeps its own premium
+    addToPile(stTyped, Cargo.Coal, 6, 50, 0, 1.3);
+    expect(stTyped.piles.find((p) => p.dest === 6)!.supply).toBeCloseTo(1.3, 6);
+    // the revenue multiplier for a leg is the carried premium times the destination's price
+    expect(deliveryRevenue(Cargo.Coal, 10, 20, 5, 1.1 * 1.05)).toBe(Math.round(deliveryRevenue(Cargo.Coal, 10, 20, 5) * 1.155));
   });
 });

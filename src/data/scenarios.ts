@@ -106,7 +106,16 @@ export const PASSAU_MAP: DrawnMap = {
     { type: 'forest', x: 110, y: 27, name: 'Breitenberg Forest' },
     { type: 'forest', x: 80, y: 56, name: 'Neuburger Wald' },
     { type: 'sawmill', x: 58, y: 13, name: 'Tittling Sawmill' },
-    { type: 'sawmill', x: 86, y: 30, name: 'Hauzenberg Sawmill' },
+    { type: 'sawmill', x: 96, y: 30, name: 'Hauzenberg Sawmill' },
+    // Kropfmühl below Hauzenberg: graphite has been mined here since the 15th century
+    { type: 'graphiteMine', x: 86, y: 30, name: 'Kropfmühl Graphite Mine', perks: [{ cargo: Cargo.Graphite, pct: 8, label: 'Historic graphite seam' }] },
+    // bayernhafen Passau on the north bank below the Ilz mouth: bulk cargo leaves by Danube barge
+    { type: 'riverPort', x: 74, y: 38, name: 'Bayernhafen Passau', perks: [Cargo.Graphite, Cargo.Coal, Cargo.IronOre, Cargo.Oil].map((cargo) => ({ cargo, pct: 10, label: 'Export terminal (Danube barges)' })) },
+    // mines in the granite mountains (fictional: the district has no coal or ore) and oil in the flat south-east
+    { type: 'coalMine', x: 104, y: 8, name: 'Dreisessel Coal Mine' },
+    { type: 'ironMine', x: 26, y: 8, name: 'Brotjacklriegel Iron Mine' },
+    { type: 'oilWell', x: 100, y: 72, name: 'Innviertel Oil Field' },
+    { type: 'oilWell', x: 112, y: 84, name: 'Sauwald Oil Well' },
     { type: 'farm', x: 22, y: 76, name: 'Rottal Farm' },
     { type: 'farm', x: 36, y: 63, name: 'Griesbach Farm' },
     { type: 'farm', x: 53, y: 86, name: 'Kirchham Farm' },
@@ -114,6 +123,7 @@ export const PASSAU_MAP: DrawnMap = {
     { type: 'foodPlant', x: 12, y: 34, name: 'Aldersbach Brewery', perks: [{ cargo: Cargo.Food, pct: 10, label: 'Brewery tradition' }] },
     { type: 'foodPlant', x: 39, y: 73, name: 'Pocking Dairy' },
   ],
+  ships: [{ name: 'Danube barge', points: [[77, 43], [80, 44], [90, 48], [100, 52], [112, 54], [131, 57]], speed: 6, dwellDays: 12 }],
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -155,7 +165,7 @@ export const SCENARIOS: readonly ScenarioDef[] = [
     id: 'passau',
     name: 'Passau District',
     tagline: 'Danube, Inn and Ilz – timber from the forest, grain from the Rottal, guests for the spas.',
-    description: 'The district of Passau in Lower Bavaria, half a kilometre per tile. The Danube crosses the map from Vilshofen to the Austrian border, the Inn arrives from the south and the Ilz from the Bavarian Forest, all meeting at Passau. Sawmills in Tittling and Hauzenberg want the forest’s logs; the Rottal farms feed the Aldersbach brewery and the Pocking dairy; the spa towns Bad Füssing and Bad Griesbach pay extra for passengers. Bridges are the cost of doing business here.',
+    description: 'The district of Passau in Lower Bavaria, half a kilometre per tile. The Danube crosses the map from Vilshofen to the Austrian border, the Inn arrives from the south and the Ilz from the Bavarian Forest, all meeting at Passau. Sawmills in Tittling and Hauzenberg want the forest’s logs; the Rottal farms feed the Aldersbach brewery and the Pocking dairy; the spa towns Bad Füssing and Bad Griesbach pay extra for passengers. The Kropfmühl graphite mine, the mountain mines and the oil fields in the south-east sell through Bayernhafen Passau, where a barge carries bulk cargo down the Danube. Bridges are the cost of doing business here.',
     difficulty: 'medium',
     startMoney: 750_000,
     startYear: 1900,
@@ -165,6 +175,7 @@ export const SCENARIOS: readonly ScenarioDef[] = [
       { kind: 'townsServed', target: 12 },
       { kind: 'deliver', cargo: Cargo.Planks, target: 4_000 },
       { kind: 'deliver', cargo: Cargo.Food, target: 3_000 },
+      { kind: 'deliver', cargo: Cargo.Graphite, target: 1_500 },
       { kind: 'pax', target: 30_000 },
     ],
   },

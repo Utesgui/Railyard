@@ -32,6 +32,8 @@ A drawn map is a list of geographic features on a base terrain, plus explicit to
 | `zone` | polygon, terrain, density 0–1 (noise-clumped) and clump scale |
 | `blob` | circle, terrain, density fading toward the rim |
 
+| `ships` | polyline of water tiles, speed (tiles per day) and dwell days: a decorative barge shuttles along it, its position a pure function of game time |
+
 Zones and blobs are drawn first and cleaned with the majority filter, water goes on top. Towns are `{ name, x, y, pop, perks? }` and grow their building blob like generated ones; industries are `{ type, x, y, name, perks?, level? }` and slide to the nearest free 2×2 footprint if the drawn spot is taken. Perks are fixed price modifiers (see ECONOMY.md).
 
 ### Passau district
@@ -41,7 +43,8 @@ Zones and blobs are drawn first and cleaned with the majority filter, water goes
 - Rivers: the Danube from the west edge past Vilshofen and Windorf to Passau, then wider east past Obernzell to the Austrian border; the Inn from the south edge past Neuhaus and Neuburg; the Ilz from the north; the Vils through Aidenbach into the Danube at Vilshofen; the Rott through the south past Kößlarn, Rotthalmünster, Pocking and Ruhstorf into the Inn; the lake at Eging am See.
 - Terrain: Bavarian Forest (forest and hills) north of the Danube with granite mountains in the north-east (Dreisessel) and north; the Neuburger Wald between Inn and Danube east of Passau; rolling Rottal farmland in the south; flat river valleys.
 - 31 towns from Passau (4,800) to Sonnen (300); Bad Füssing (+20 % passengers), Bad Griesbach (+15 %) and Passau (+10 %) carry passenger perks.
-- Industries: four forests (Sonnen, Fürstenstein, Breitenberg, Neuburger Wald), sawmills in Tittling and Hauzenberg, four Rottal farms, the Aldersbach brewery (+10 % food) and the Pocking dairy. There is no coal, ore or oil in the district, so the map has the wood and food chains plus passengers and mail.
+- Industries: four forests (Sonnen, Fürstenstein, Breitenberg, Neuburger Wald), sawmills in Tittling and Hauzenberg, four Rottal farms, the Aldersbach brewery (+10 % food) and the Pocking dairy; the Kropfmühl graphite mine below Hauzenberg (a real one, worked since the 15th century); **Bayernhafen Passau** on the Danube's north bank below the Ilz mouth, a river port that takes graphite, coal, iron ore and oil at +10 % and ships it out of the map; a coal mine at the Dreisessel and an iron mine on the Brotjacklriegel (fictional, so the map has coal and ore); two oil wells in the flat, empty south-east (Innviertel, Sauwald). A barge shuttles between the port and the eastern edge of the map.
+- Objectives: connect Passau, Vilshofen and Pocking; serve 12 towns; 4,000 t planks; 3,000 t food; 1,500 t graphite; 30,000 passengers.
 
 ## Scenarios (`src/data/scenarios.ts`)
 
@@ -49,7 +52,7 @@ Zones and blobs are drawn first and cleaned with the majority filter, water goes
 | --- | --- | --- | --- |
 | Green Valley (easy) | classic 64×48 | $600k, 1900 | serve 4 towns, run 3 trains, deliver 500 t logs, hold $700k |
 | Twin Cities (easy) | plains 96×64, two cities of 5,000–6,500 as far apart as possible | $600k | connect the two biggest towns, 60,000 passengers, 4,000 bags of mail, $1.5M |
-| Passau District (medium) | drawn 128×96 | $750k | connect Passau, Vilshofen and Pocking; serve 12 towns; 4,000 t planks; 3,000 t food; 30,000 passengers |
+| Passau District (medium) | drawn 128×96 | $750k | connect Passau, Vilshofen and Pocking; serve 12 towns; 4,000 t planks; 3,000 t food; 1,500 t graphite; 30,000 passengers |
 | Over the Ridge (medium) | ridge 128×96 | $750k | 3,000 t coal, 2,000 t planks, serve 6 industries, $1.5M |
 | Coal Country (medium) | highlands 96×64, 4–5 coal mines, 3 iron mines, 2 steel mills, no oil | $700k | 6,000 t coal, 2,000 t steel, 1,500 crates goods, a level-4 coal mine |
 | Great Plains (medium) | plains 176×120, 22 towns | $800k | serve 20,000 inhabitants, 60,000 passengers, 5,000 t grain, $1.5M revenue in twelve months |

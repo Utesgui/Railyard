@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CARGO_COUNT } from '../data/cargo';
 import { generateWorld } from '../world/gen/generate';
 import { decodeState, encodeState } from './codec';
 
@@ -27,9 +28,13 @@ describe('save codec', () => {
     delete st.tutorialStep;
     delete st.stats.trainsBought;
     const back = decodeState(JSON.stringify(file)).state;
-    expect(back.schema).toBe(6);
+    expect(back.schema).toBe(7);
     expect(back.contracts).toEqual([]);
     expect(back.scenario).toBeNull();
+    // per-cargo arrays grew to the current cargo count
+    expect(back.stats.byCargo.length).toBe(CARGO_COUNT);
+    expect(back.economy.ledger[0].revenue.length).toBe(CARGO_COUNT);
+    expect(back.towns[0].deliveredMonth.length).toBe(CARGO_COUNT);
     expect(back.notificationSeq).toBe(0);
     expect(back.world.track2.length).toBe(back.world.terrain.length);
     expect(back.economy.startMoney).toBe(500_000);

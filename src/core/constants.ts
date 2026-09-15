@@ -12,6 +12,6 @@ export const TICKS_PER_YEAR = TICKS_PER_MONTH * MONTHS_PER_YEAR;
 
 export const START_YEAR = 1900;
 
-export const SAVE_SCHEMA = 6;
+export const SAVE_SCHEMA = 7;
 
 export const NONE = -1;

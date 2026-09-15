@@ -4,6 +4,7 @@ import type { GameState, Industry, Station } from '../core/types';
 import { B } from '../data/balance';
 import { INDUSTRIES, isRawIndustry } from '../data/industries';
 import { chooseFreightDest } from './cargoRouting';
+import { supplyQuote } from './prices';
 import { chance } from './rand';
 import { addToPile, bestRating } from './station';
 
@@ -40,6 +41,7 @@ export function distributeCargo(state: GameState, rt: Runtime, ind: Industry, ca
   const best = bestRating(stations, cargo);
   const captured = Math.round(n * best);
   if (captured <= 0) return 0;
+  const supply = supplyQuote(state, rt, ind, cargo).factor;
   let ratingSum = 0;
   for (const s of stations) ratingSum += s.rating[cargo];
   let accepted = 0;
@@ -48,7 +50,7 @@ export function distributeCargo(state: GameState, rt: Runtime, ind: Industry, ca
     const st = stations[i];
     const share = i === stations.length - 1 ? remaining : Math.floor((captured * st.rating[cargo]) / ratingSum);
     remaining -= share;
-    accepted += addToPile(st, cargo, scratchDests[i], share);
+    accepted += addToPile(st, cargo, scratchDests[i], share, 0, supply);
   }
   return accepted;
 }
@@ -65,6 +67,17 @@ export function stepIndustriesDaily(state: GameState, rt: Runtime): void {
         ind.outputAccum[k] -= n;
         ind.producedMonth += n;
         ind.transportedMonth += distributeCargo(state, rt, ind, type.outputs[k], n);
+      }
+    } else if (type.outputs.length === 0) {
+      // exporters (a river port): whatever is delivered leaves the map; it counts as produced and
+      // moved so the diagnosis and the panels read it as served
+      for (let j = 0; j < type.inputs.length; j++) {
+        const stock = ind.inputStock[j];
+        if (stock <= 0) continue;
+        const take = Math.min(stock, Math.max(12, stock / 4));
+        ind.inputStock[j] -= take;
+        ind.producedMonth += take;
+        ind.transportedMonth += take;
       }
     } else {
       // processors: convert waiting input smoothly

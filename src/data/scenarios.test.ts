@@ -82,7 +82,23 @@ describe('scenarios', () => {
     }
     expect(lonely).toBe(0);
     const kinds = new Set(s.industries.map((i) => INDUSTRIES[i.type].key));
-    expect(kinds).toEqual(new Set(['forest', 'sawmill', 'farm', 'foodPlant']));
+    expect(kinds).toEqual(new Set(['forest', 'sawmill', 'farm', 'foodPlant', 'graphiteMine', 'riverPort', 'coalMine', 'ironMine', 'oilWell']));
+    // the port sits on the north bank of the Danube, the mines in the hills
+    const port = s.industries.find((i) => i.name === 'Bayernhafen Passau')!;
+    let waterBelow = 0;
+    for (let y = port.y + 2; y < port.y + 8; y++) if (s.world.terrain[y * w + port.x] === Terrain.Water) waterBelow++;
+    expect(waterBelow).toBeGreaterThanOrEqual(1);
+    for (const name of ['Kropfmühl Graphite Mine', 'Dreisessel Coal Mine', 'Brotjacklriegel Iron Mine']) {
+      const m = s.industries.find((i) => i.name === name)!;
+      let rock = 0;
+      for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+        const t = s.world.terrain[(m.y + 1 + dy) * w + m.x + 1 + dx];
+        if (t === Terrain.Hills || t === Terrain.Mountain) rock++;
+      }
+      expect(rock, name).toBeGreaterThanOrEqual(5);
+    }
+    // the barge route runs over water
+    for (const [x, y] of PASSAU_MAP.ships![0].points) if (x < w) expect(s.world.terrain[y * w + x], `${x},${y}`).toBe(Terrain.Water);
   });
 
   it('terrain presets produce different worlds and respect their shapes', () => {

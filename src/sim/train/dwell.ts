@@ -10,7 +10,7 @@ import { CARGO, CARGO_COUNT, Cargo, TOWN_ACCEPTS, cargoName } from '../../data/c
 import { WAGONS } from '../../data/vehicles';
 import { nextHop } from '../cargoRouting';
 import { deliveryRevenue, earn } from '../economy';
-import { priceMultiplier } from '../prices';
+import { demandQuoteAt } from '../prices';
 import { deliverToIndustry } from '../industry';
 import { contractDelivery } from '../contracts';
 import { notify } from '../notify';
@@ -288,10 +288,10 @@ function exchangeCargo(state: GameState, rt: Runtime, train: Train, line: Line, 
       const acceptsHere = rt.acceptors[wg.cargo].has(here);
       const deliverHere = wg.dest === here || (hop < 0 && acceptsHere);
       const dist = octileT(wg.originTile, station.tile, w);
-      // local prices: the producer's premium at the origin and the receiver's price at the final destination
-      const originSt = rt.stationById.get(rt.stationAt[wg.originTile]);
+      // local prices: the producer's premium travels with the load (through transfers), the
+      // receiver's price is the final destination's
       const destSt = deliverHere ? station : rt.stationById.get(wg.dest);
-      const price = priceMultiplier(state, rt, originSt, destSt, wg.cargo);
+      const price = (wg.supply ?? 1) * (destSt ? demandQuoteAt(state, rt, destSt, wg.cargo).factor : 1);
       if (deliverHere) {
         const rev = deliveryRevenue(wg.cargo, wg.amount, dist, day - wg.loadedDay, price);
         earn(state, rev, wg.cargo);
@@ -317,7 +317,7 @@ function exchangeCargo(state: GameState, rt: Runtime, train: Train, line: Line, 
         revenueTotal += rev;
         train.profitMonth += rev;
         line.revenueMonth += rev;
-        addToPile(station, wg.cargo, wg.dest, wg.amount, day - wg.loadedDay);
+        addToPile(station, wg.cargo, wg.dest, wg.amount, day - wg.loadedDay, wg.supply ?? 1);
         units += wg.amount;
         clearWagon(wg);
       }
@@ -370,6 +370,7 @@ function loadWagons(state: GameState, rt: Runtime, train: Train, station: Statio
     wg.amount = take;
     wg.loadedDay = day;
     wg.originTile = station.tile;
+    wg.supply = p.supply ?? 1;
     takeFromPile(station, bi, take);
     units += take;
     station.pickedUpMonth[p.cargo] += take;

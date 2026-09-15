@@ -188,8 +188,8 @@ test.describe('start page', () => {
     expect(await page.evaluate(() => window.__game.state.towns.some((t) => t.name === 'Passau'))).toBe(true);
     await page.keyboard.press('g');
     await expect(page.locator('#panel h2')).toHaveText('Passau District');
-    await expect(page.locator('#panel .goal')).toHaveCount(5);
-    await expect(page.locator('#toolbar .btn', { hasText: 'Goals' }).locator('.badge-count')).toHaveText('0/5');
+    await expect(page.locator('#panel .goal')).toHaveCount(6);
+    await expect(page.locator('#toolbar .btn', { hasText: 'Goals' }).locator('.badge-count')).toHaveText('0/6');
   });
 
   test('a seed in the URL skips the start page', async ({ page }) => {
